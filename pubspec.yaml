@@ -41,6 +41,7 @@ dependencies:
   image_picker: ^1.1.2
   firebase_storage: ^12.3.1
   esc_pos_utils: ^1.1.0
+  flutter_dotenv: ^5.2.1
   #flutter_blue: ^0.8.0
   #blue_thermal_printer: ^1.2.3
   
