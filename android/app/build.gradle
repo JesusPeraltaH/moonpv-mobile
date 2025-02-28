@@ -1,0 +1,55 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services" // Agrega el plugin de Google Services aquí
+}
+
+android {
+    namespace 'com.yourcompany.blue_thermal_printer'
+    compileSdkVersion 31
+    namespace = "com.example.moonpv"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    defaultConfig {
+        applicationId "com.example.moonpv"
+        minSdkVersion 21
+        targetSdkVersion 31  // Cambia de 29 a 30
+        versionCode 1
+        versionName "1.0"
+
+        // Otras configuraciones
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.example.moonpv"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+// Asegúrate de agregar esta configuración al final del archivo
+dependencies {
+   // implementation 'com.google.firebase:firebase-core:3.5.0'
+    implementation platform('com.google.firebase:firebase-bom:32.0.0')
+    //implementation 'com.google.firebase:firebase-analytics'
+    //implementation 'com.google.firebase:firebase-crashlytics' // Asegúrate de usar la versión más reciente
+}
