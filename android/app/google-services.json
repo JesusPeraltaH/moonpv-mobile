@@ -12,7 +12,20 @@
           "package_name": "com.example.moonpv"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "904853707508-vl040a032hs2se64jr754prrttef6duc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.moonpv",
+            "certificate_hash": "8c24d7156cc933ba732780214ed17b542d4083e8"
+          }
+        },
+        {
+          "client_id": "904853707508-ud9on3el8m1le1v9h5q8d3ulk4477kr1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDqvS5nlggoSbLjz5vcmF3rHdirQLieMhc"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "904853707508-ud9on3el8m1le1v9h5q8d3ulk4477kr1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "904853707508-n6vi8mhcf0p7hb5go3fatn8r1gt8ljso.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.moonpos"
+              }
+            }
+          ]
         }
       }
     }

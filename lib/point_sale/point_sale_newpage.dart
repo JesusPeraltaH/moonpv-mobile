@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/inventory/sales.dart';
+import 'package:moonpv/screens/add_user_screen.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 
 class SalespointNewSalePage extends StatefulWidget {
@@ -467,22 +468,6 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     );
   }
 
-  // Future<void> _imprimirOrden() async {
-  //   // Lógica para imprimir los detalles de la orden
-  //   String orderDetails = _saleDetails.map((product) {
-  //     return '${product['cantidad']} x ${product['nombre']} - \$${product['total']}';
-  //   }).join('\n');
-
-  //   // Aquí llamas a la función de impresión
-  //   if (devices.isNotEmpty) {
-  //     await printer.connect(devices[0]); // Conectar al primer dispositivo
-  //     await printer.printCustom(orderDetails, 1, 1); // Imprimir texto
-  //     await printer.disconnect(); // Desconectar después de imprimir
-  //   } else {
-  //     print("No hay dispositivos Bluetooth disponibles.");
-  //   }
-  // }
-
   @override
   Widget build(BuildContext context) {
     int totalItems = _saleDetails.fold<int>(
@@ -527,17 +512,24 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
               ),
             ),
             ListTile(
-              leading: Icon(Icons.settings),
+              leading: Icon(Icons.inventory),
               title: Text('Inventario'),
               onTap: () {
                 Get.to(InventoryPage());
               },
             ),
             ListTile(
-              leading: Icon(Icons.settings),
+              leading: Icon(Icons.sell),
               title: Text('Ventas'),
               onTap: () {
                 Get.to(SalesPage());
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.person),
+              title: Text('Crear Usuarios'),
+              onTap: () {
+                Get.to(CreateUserScreen());
               },
             ),
             ListTile(
