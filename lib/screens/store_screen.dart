@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 import 'package:moonpv/screens/login_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class StoreScreen extends StatelessWidget {
   // Lista de productos de ejemplo
@@ -46,15 +47,46 @@ class StoreScreen extends StatelessWidget {
 
   // 🔹 Función para cerrar sesión
   void _logout(BuildContext context) async {
-    try {
-      await FirebaseAuth.instance.signOut();
-      Get.offAll(
-          () => LoginScreen()); // Navega a la pantalla de inicio de sesión
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cerrar sesión: $e')),
-      );
-    }
+    // Mostrar un diálogo de confirmación
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Cerrar sesión'),
+          content: Text('¿Estás seguro de que deseas cerrar sesión?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Cerrar el diálogo
+              },
+              child: Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Cerrar el diálogo
+                try {
+                  await FirebaseAuth.instance
+                      .signOut(); // Cerrar sesión en Firebase
+
+                  // Eliminar el estado de autenticación guardado en SharedPreferences
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('isLoggedIn');
+                  await prefs.remove('userId');
+
+                  Get.offAll(() =>
+                      LoginScreen()); // Navegar a la pantalla de inicio de sesión
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error al cerrar sesión: $e')),
+                  );
+                }
+              },
+              child: Text('Cerrar sesión', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
