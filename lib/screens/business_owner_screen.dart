@@ -1,12 +1,53 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart'; // For charts
+import 'package:fl_chart/fl_chart.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:moonpv/screens/login_screen.dart'; // For charts
 
 class BusinessOwnerScreen extends StatelessWidget {
+  void _logout(BuildContext context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      Get.offAll(
+          () => LoginScreen()); // Navega a la pantalla de inicio de sesión
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cerrar sesión: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text("Panel de Jefe de Negocio"),
+        actions: [
+          // 🔥 Menú desplegable para carrito y logout
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.shopping_cart),
+            onSelected: (value) {
+              if (value == 'cart') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Carrito de compras")),
+                );
+              } else if (value == 'logout') {
+                _logout(context);
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'cart',
+                child: Text('Ver Carrito'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Text('Cerrar sesión'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(16),

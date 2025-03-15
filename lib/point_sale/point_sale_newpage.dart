@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/inventory/sales.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
+import 'package:moonpv/screens/login_screen.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 
 class SalespointNewSalePage extends StatefulWidget {
@@ -46,6 +48,17 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
 
   Future<void> _getDevices() async {
     // devices = await printer.getBondedDevices();
+  }
+  void _logout(BuildContext context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      Get.offAll(
+          () => LoginScreen()); // Navega a la pantalla de inicio de sesión
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cerrar sesión: $e')),
+      );
+    }
   }
 
   void _addProductToSale(Map<String, dynamic> product) async {
@@ -256,10 +269,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
           actions: [
             ElevatedButton.icon(
               onPressed: () async {
-                await _guardarVenta(); // Asegúrate de que esta función esté actualizada
-                // Llamar a la función para imprimir los datos de la orden
-                print("Detalles de la venta: $_saleDetails");
-                //await _imprimirOrden(); // Nueva función para imprimir
+                await _guardarVenta(); // Guardar la venta en Firestore
                 for (var product in _saleDetails) {
                   if (product['id'] != null) {
                     _actualizarInventario(product['id'], product['cantidad']);
@@ -268,8 +278,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                         'El ID del producto es nulo para el producto: ${product['nombre']}');
                   }
                 }
-
-                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Cerrar el diálogo
               },
               icon: Icon(Icons.check, color: Colors.white),
               label: Text(
@@ -288,50 +297,58 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
 
   Future<void> _guardarVenta() async {
     try {
-      CollectionReference sales =
-          FirebaseFirestore.instance.collection('sales');
-
-      List<Map<String, dynamic>> products = [];
-
-      for (var product in _saleDetails) {
-        // Buscar el negocioId basado en el código del producto
-        String productCode = product['codigo'];
-        String? negocioId = await _getNegocioIdByProductCode(productCode);
-
-        // Agregar el producto con el negocioId
-        products.add({
-          'nombre': product['nombre'],
-          'codigo': product['codigo'],
-          'cantidad': product['cantidad'],
-          'precio': product['precio'],
-          'total': product['total'],
-          'negocioId': negocioId, // Agregar el negocioId aquí
-        });
-
-        // Reducir la cantidad en la colección de productos
-        await _actualizarInventario(productCode, product['cantidad']);
-      }
-
+      // Calcular el gran total de la venta
       double grandTotal =
           _saleDetails.fold(0.0, (sum, item) => sum + item['total']);
 
-      await sales.add({
-        'productos': products,
-        'gran_total': grandTotal,
-        'fecha': DateTime.now(),
-      });
+      // Crear un mapa para almacenar los detalles de la venta
+      Map<String, dynamic> venta = {
+        'fecha': FieldValue.serverTimestamp(), // Fecha y hora de la venta
+        'grandTotal': grandTotal, // Total general de la venta
+        'productos': [], // Lista de productos vendidos
+      };
 
+      // Recorrer cada producto en _saleDetails
+      for (var product in _saleDetails) {
+        // Buscar el producto en Firestore para obtener su ID y negocioId
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('productos')
+            .where('codigo', isEqualTo: product['codigo'])
+            .get();
+
+        if (querySnapshot.docs.isNotEmpty) {
+          final productoFirestore = querySnapshot.docs.first;
+          final String productoId = productoFirestore.id;
+          final String negocioId = productoFirestore['negocioId'];
+
+          // Agregar los detalles del producto a la venta
+          venta['productos'].add({
+            'productoId': productoId, // ID del producto
+            'negocioId':
+                negocioId, // ID del negocio al que pertenece el producto
+            'cantidad': product['cantidad'], // Cantidad vendida
+            'precioVenta': product['precio'], // Precio al que se vendió
+            'total': product['total'], // Total del producto (precio * cantidad)
+          });
+        } else {
+          print('Producto no encontrado en Firestore: ${product['codigo']}');
+        }
+      }
+
+      // Guardar la venta en Firestore
+      await FirebaseFirestore.instance.collection('sales').add(venta);
+
+      // Mostrar mensaje de éxito
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Venta finalizada y guardada exitosamente.')),
+        SnackBar(content: Text('Venta guardada correctamente')),
       );
 
-      // Limpiar la tabla de productos
+      // Limpiar la lista de productos vendidos
       setState(() {
         _saleDetails.clear();
-        _codeController.clear();
-        _quantityController.text = '1'; // Restablecer cantidad a 1
       });
     } catch (e) {
+      // Manejar errores
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al guardar la venta: $e')),
       );
@@ -402,14 +419,29 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
 
         if (requestedQuantity <= availableQuantity) {
           setState(() {
-            _saleDetails.add({
-              'cantidad': requestedQuantity,
-              'nombre': product['nombre'] ?? 'Desconocido',
-              'codigo': code,
-              'precio': (product['precio'] as num?)?.toDouble() ?? 0.0,
-              'total': ((product['precio'] as num?)?.toDouble() ?? 0.0) *
-                  requestedQuantity,
-            });
+            // Buscar si el producto ya existe en la lista
+            int index = _saleDetails.indexWhere((p) => p['codigo'] == code);
+
+            if (index != -1) {
+              // Si el producto ya existe, actualizar la cantidad y el total
+              int nuevaCantidad =
+                  _saleDetails[index]['cantidad'] + requestedQuantity;
+              double nuevoTotal = _saleDetails[index]['precio'] * nuevaCantidad;
+
+              _saleDetails[index]['cantidad'] = nuevaCantidad;
+              _saleDetails[index]['total'] = nuevoTotal;
+            } else {
+              // Si el producto no existe, agregarlo como un nuevo producto
+              _saleDetails.add({
+                'cantidad': requestedQuantity,
+                'nombre': product['nombre'] ?? 'Desconocido',
+                'codigo': code,
+                'precio': (product['precio'] as num?)?.toDouble() ?? 0.0,
+                'total': ((product['precio'] as num?)?.toDouble() ?? 0.0) *
+                    requestedQuantity,
+              });
+            }
+
             _quantityController.text =
                 '1'; // Resetear a 1 después de agregar el producto
             _codeController.clear(); // Limpiar el campo de código
@@ -537,6 +569,13 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
               title: Text('Configuración'),
               onTap: () {
                 // Lógica de navegación
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Cerrar sesión'),
+              onTap: () {
+                _logout(context);
               },
             ),
           ],

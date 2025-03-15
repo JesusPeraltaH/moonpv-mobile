@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
+import 'package:moonpv/services/barcode_scanner_page.dart';
 
 class InventoryPage extends StatefulWidget {
   @override
@@ -86,6 +87,25 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
           );
         });
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchProductsForBusiness(
+      String businessId) async {
+    QuerySnapshot query = await FirebaseFirestore.instance
+        .collection('productos')
+        .where('negocioId', isEqualTo: businessId)
+        .get();
+
+    return query.docs.map((doc) {
+      return {
+        'id': doc.id, // ID del producto
+        'codigo': doc['codigo'],
+        'nombre': doc['nombre'],
+        'precio': doc['precio'],
+        'cantidad': doc['cantidad'],
+        'imagen': doc['imagen'],
+      };
+    }).toList();
   }
 
   // Cargar la imagen desde la galería o la cámara
@@ -279,6 +299,96 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
+  void _showProductsDialog(List<Map<String, dynamic>> products) {
+    bool isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Productos del Negocio'),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                if (isPortrait)
+                  ...products.map((product) {
+                    return ListTile(
+                      title: Text(product['nombre']),
+                      subtitle: Text('Código: ${product['codigo']}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.edit),
+                            onPressed: () {
+                              _showEditProductBottomSheet(product);
+                            },
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.delete),
+                            onPressed: () {
+                              _deleteProductBusiness(product['id']);
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                if (!isPortrait)
+                  DataTable(
+                    columns: [
+                      DataColumn(label: Text('Código')),
+                      DataColumn(label: Text('Nombre')),
+                      DataColumn(label: Text('Precio')),
+                      DataColumn(label: Text('Cantidad')),
+                      DataColumn(label: Text('Acciones')),
+                    ],
+                    rows: products.map((product) {
+                      return DataRow(
+                        cells: [
+                          DataCell(Text(product['codigo'])),
+                          DataCell(Text(product['nombre'])),
+                          DataCell(Text(product['precio'].toString())),
+                          DataCell(Text(product['cantidad'].toString())),
+                          DataCell(
+                            Row(
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.edit),
+                                  onPressed: () {
+                                    _showEditProductBottomSheet(product);
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete),
+                                  onPressed: () {
+                                    _deleteProduct(product['id']);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // Guardar producto actual
 // Guardar producto actual
   void _saveCurrentProduct() async {
@@ -337,6 +447,135 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
+  void _deleteProduct(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Eliminar producto'),
+        content: Text('¿Estás seguro de que deseas eliminar este producto?'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Cerrar el diálogo
+            },
+            child: Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                productsList.removeAt(index); // Eliminar el producto
+              });
+              Navigator.pop(context); // Cerrar el diálogo
+            },
+            child: Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteProductBusiness(String productId) async {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Eliminar Producto'),
+          content: Text('¿Estás seguro de que deseas eliminar este producto?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Cerrar el diálogo
+              },
+              child: Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () async {
+                // Eliminar el producto de Firestore
+                await FirebaseFirestore.instance
+                    .collection('productos')
+                    .doc(productId)
+                    .delete();
+
+                Navigator.of(context).pop(); // Cerrar el diálogo
+                Get.snackbar('Éxito', 'Producto eliminado correctamente');
+              },
+              child: Text('Eliminar', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showEditProductBottomSheet(Map<String, dynamic> product) {
+    final TextEditingController _codigoController =
+        TextEditingController(text: product['codigo']);
+    final TextEditingController _nombreController =
+        TextEditingController(text: product['nombre']);
+    final TextEditingController _precioController =
+        TextEditingController(text: product['precio'].toString());
+    final TextEditingController _cantidadController =
+        TextEditingController(text: product['cantidad'].toString());
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Editar Producto', style: TextStyle(fontSize: 18)),
+                TextField(
+                  controller: _codigoController,
+                  decoration: InputDecoration(labelText: 'Código'),
+                ),
+                TextField(
+                  controller: _nombreController,
+                  decoration: InputDecoration(labelText: 'Nombre'),
+                ),
+                TextField(
+                  controller: _precioController,
+                  decoration: InputDecoration(labelText: 'Precio'),
+                  keyboardType: TextInputType.number,
+                ),
+                TextField(
+                  controller: _cantidadController,
+                  decoration: InputDecoration(labelText: 'Cantidad'),
+                  keyboardType: TextInputType.number,
+                ),
+                SizedBox(height: 16.0),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Lógica para actualizar el producto en Firestore
+                    await FirebaseFirestore.instance
+                        .collection('productos')
+                        .doc(product['id'])
+                        .update({
+                      'codigo': _codigoController.text,
+                      'nombre': _nombreController.text,
+                      'precio': double.parse(_precioController.text),
+                      'cantidad': int.parse(_cantidadController.text),
+                    });
+
+                    Navigator.of(context).pop(); // Cerrar el BottomSheet
+                    Get.snackbar('Éxito', 'Producto actualizado correctamente');
+                  },
+                  child: Text('Guardar Cambios'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _editProduct(int index) {
     final product = productsList[index];
     productControllers.last['codigo']!.text = product['codigo'];
@@ -384,7 +623,7 @@ class _InventoryPageState extends State<InventoryPage> {
           builder: (context) => IconButton(
             icon: Icon(Icons.menu),
             onPressed: () {
-              Scaffold.of(context).openDrawer(); // Abrir el Drawer
+              Scaffold.of(context).openDrawer();
             },
           ),
         ),
@@ -409,7 +648,7 @@ class _InventoryPageState extends State<InventoryPage> {
               leading: Icon(Icons.home),
               title: Text('Página Principal'),
               onTap: () {
-                Get.to(SalespointNewSalePage()); // Navegar al home
+                Get.to(SalespointNewSalePage());
               },
             ),
           ],
@@ -519,10 +758,9 @@ class _InventoryPageState extends State<InventoryPage> {
                     },
                   ),
                   IconButton(
-                    icon:
-                        Icon(Icons.home, color: Colors.white), // Botón de Home
+                    icon: Icon(Icons.home, color: Colors.white),
                     onPressed: () {
-                      Get.to(SalespointNewSalePage()); // Navegar al home
+                      Get.to(SalespointNewSalePage());
                     },
                   ),
                 ],
@@ -621,7 +859,29 @@ class _InventoryPageState extends State<InventoryPage> {
                   children: [
                     TextField(
                       controller: productController['codigo'],
-                      decoration: InputDecoration(labelText: 'Código'),
+                      decoration: InputDecoration(
+                        labelText: 'Código',
+                        suffixIcon: IconButton(
+                          icon: Icon(Icons.camera_alt),
+                          onPressed: () async {
+                            final String? barcode =
+                                await Navigator.push<String>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => BarcodeScannerPage(
+                                  onScan: (barcode) {
+                                    productController['codigo']?.text = barcode;
+                                  },
+                                ),
+                              ),
+                            );
+
+                            if (barcode != null) {
+                              productController['codigo']?.text = barcode;
+                            }
+                          },
+                        ),
+                      ),
                     ),
                     TextField(
                       controller: productController['nombre'],
@@ -682,46 +942,65 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _buildProductTable() {
     return productsList.isEmpty
-        ? Text('No hay productos agregados.')
-        : DataTable(
-            columns: [
-              DataColumn(label: Text('C��digo')),
-              DataColumn(label: Text('Nombre')),
-              DataColumn(label: Text('Precio')),
-              DataColumn(label: Text('Cantidad')),
-              DataColumn(label: Text('Imagen')),
-              DataColumn(label: Text('Acciones')),
-            ],
-            rows: productsList.map((product) {
-              int index = productsList.indexOf(product);
-              return DataRow(cells: [
-                DataCell(Text(product['codigo'])),
-                DataCell(Text(product['nombre'])),
-                DataCell(Text(product['precio'])),
-                DataCell(Text(product['cantidad'])),
-                DataCell(
-                  product['imagen'] == null
-                      ? Text('Sin imagen')
-                      // : Image.file(File(product['imagen']),
-                      //   height: 50, width: 50, fit: BoxFit.cover),
-                      : Image.network(product['imagen'],
-                          height: 50, width: 50, fit: BoxFit.cover),
-                ),
-                DataCell(
-                  IconButton(
-                    icon: Icon(Icons.edit),
-                    onPressed: () {
-                      _editProduct(index);
-                    },
+        ? Center(child: Text('No hay productos agregados.'))
+        : SingleChildScrollView(
+            scrollDirection:
+                Axis.horizontal, // Permite desplazamiento horizontal
+            child: DataTable(
+              columns: [
+                DataColumn(label: Text('Código')),
+                DataColumn(label: Text('Nombre')),
+                DataColumn(label: Text('Precio')),
+                DataColumn(label: Text('Cantidad')),
+                DataColumn(label: Text('Imagen')),
+                DataColumn(label: Text('Acciones')),
+              ],
+              rows: productsList.map((product) {
+                int index = productsList.indexOf(product);
+                return DataRow(cells: [
+                  DataCell(Text(product['codigo'])),
+                  DataCell(Text(product['nombre'])),
+                  DataCell(Text(product['precio'])),
+                  DataCell(Text(product['cantidad'])),
+                  DataCell(
+                    product['imagen'] == null
+                        ? Text('Sin imagen')
+                        : Image.network(
+                            product['imagen'],
+                            height: 50,
+                            width: 50,
+                            fit: BoxFit.cover,
+                          ),
                   ),
-                ),
-              ]);
-            }).toList(),
+                  DataCell(
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.edit),
+                          onPressed: () {
+                            _editProduct(index);
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete),
+                          onPressed: () {
+                            _deleteProduct(index);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ]);
+              }).toList(),
+            ),
           );
   }
 
   // Método para construir la lista de negocios
   Widget _buildBusinessList() {
+    bool isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _getBusinesses(),
       builder: (context, snapshot) {
@@ -734,37 +1013,81 @@ class _InventoryPageState extends State<InventoryPage> {
 
         List<Map<String, dynamic>> businesses = snapshot.data!;
 
-        return DataTable(
-          columns: [
-            DataColumn(label: Text('Logo')),
-            DataColumn(label: Text('Nombre Empresa')),
-            DataColumn(label: Text('Dueño')),
-            DataColumn(label: Text('Teléfono')),
-          ],
-          rows: businesses.map((business) {
-            return DataRow(
+        // Si es modo vertical, mostramos una lista de negocios
+        if (isPortrait) {
+          return ListView.builder(
+            itemCount: businesses.length,
+            itemBuilder: (context, index) {
+              final business = businesses[index];
+              return Card(
+                margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                child: ListTile(
+                  leading: business['logo'] != null
+                      ? Image.network(
+                          business['logo'],
+                          height: 50,
+                          width: 50,
+                          fit: BoxFit.cover,
+                        )
+                      : Icon(Icons.business, size: 50),
+                  title: Text(business['nombreEmpresa']),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Dueño: ${business['nombreDueno']}'),
+                      Text('Teléfono: ${business['telefono']}'),
+                    ],
+                  ),
+                  onTap: () async {
+                    // Obtener los productos del negocio seleccionado
+                    final products =
+                        await _fetchProductsForBusiness(business['id']);
+                    _showProductsDialog(
+                        products); // Mostrar productos en un diálogo
+                  },
+                ),
+              );
+            },
+          );
+        }
+
+        // Si es modo horizontal, mostramos una tabla de negocios
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text('Logo')),
+              DataColumn(label: Text('Nombre Empresa')),
+              DataColumn(label: Text('Dueño')),
+              DataColumn(label: Text('Teléfono')),
+            ],
+            rows: businesses.map((business) {
+              return DataRow(
                 cells: [
                   DataCell(
                     business['logo'] != null
-                        ? Image.network(business['logo'],
-                            height: 50, width: 50, fit: BoxFit.cover)
-                        : Icon(Icons.business,
-                            size: 50), // Icono por defecto si no hay logo
+                        ? Image.network(
+                            business['logo'],
+                            height: 50,
+                            width: 50,
+                            fit: BoxFit.cover,
+                          )
+                        : Icon(Icons.business, size: 50),
                   ),
                   DataCell(Text(business['nombreEmpresa'])),
                   DataCell(Text(business['nombreDueno'])),
                   DataCell(Text(business['telefono'])),
                 ],
-                onSelectChanged: (selected) {
-                  setState(() {
-                    selectedBusinessId = business['id'];
-                    showBusinessProducts =
-                        true; // Mostrar productos del negocio
-                    showProductDetails =
-                        false; // Reiniciar detalles del producto
-                  });
-                });
-          }).toList(),
+                onSelectChanged: (selected) async {
+                  // Obtener los productos del negocio seleccionado
+                  final products =
+                      await _fetchProductsForBusiness(business['id']);
+                  _showProductsDialog(
+                      products); // Mostrar productos en un diálogo
+                },
+              );
+            }).toList(),
+          ),
         );
       },
     );
@@ -845,49 +1168,8 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   // Método para obtener productos del negocio
-  Future<List<Map<String, dynamic>>> _fetchProductsForBusiness(
-      String businessId) async {
-    QuerySnapshot query = await FirebaseFirestore.instance
-        .collection('productos')
-        .where('negocioId', isEqualTo: businessId)
-        .get();
-
-    return query.docs
-        .map((doc) => {
-              'codigo': doc['codigo'],
-              'nombre': doc['nombre'],
-              'precio': doc['precio'],
-              'cantidad': doc['cantidad'],
-            })
-        .toList();
-  }
 
   // Método para mostrar el diálogo con productos del negocio
-  void _showProductsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Productos del Negocio'),
-          content: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildProductsTable(), // Mostrar tabla de productos
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cerrar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   // Método para construir la tabla de productos
   Widget _buildProductsTable() {

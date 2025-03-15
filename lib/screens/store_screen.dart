@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get.dart';
+import 'package:moonpv/screens/login_screen.dart';
 
 class StoreScreen extends StatelessWidget {
   // Lista de productos de ejemplo
@@ -41,26 +44,53 @@ class StoreScreen extends StatelessWidget {
     },
   ];
 
+  // 🔹 Función para cerrar sesión
+  void _logout(BuildContext context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      Get.offAll(
+          () => LoginScreen()); // Navega a la pantalla de inicio de sesión
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cerrar sesión: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Catálogo de Tienda"),
+        title: const Text("Catálogo de Tienda"),
         actions: [
-          IconButton(
-            icon: Icon(Icons.shopping_cart),
-            onPressed: () {
-              // Navegar al carrito de compras (puedes implementarlo más adelante)
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Carrito de compras")),
-              );
+          // 🔥 Menú desplegable para carrito y logout
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.shopping_cart),
+            onSelected: (value) {
+              if (value == 'cart') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Carrito de compras")),
+                );
+              } else if (value == 'logout') {
+                _logout(context);
+              }
             },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'cart',
+                child: Text('Ver Carrito'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Text('Cerrar sesión'),
+              ),
+            ],
           ),
         ],
       ),
       body: GridView.builder(
-        padding: EdgeInsets.all(10),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2, // Dos columnas
           crossAxisSpacing: 10, // Espacio entre columnas
           mainAxisSpacing: 10, // Espacio entre filas
@@ -80,7 +110,7 @@ class StoreScreen extends StatelessWidget {
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
 
-  const ProductCard({required this.product});
+  const ProductCard({super.key, required this.product});
 
   @override
   Widget build(BuildContext context) {
@@ -97,29 +127,28 @@ class ProductCard extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   product["name"],
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 5),
+                const SizedBox(height: 5),
                 Text(
                   "\$${product["price"].toString()}",
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Colors.green,
                   ),
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 ElevatedButton(
                   onPressed: () {
-                    // Navegar a la pantalla de detalles del producto
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -128,7 +157,7 @@ class ProductCard extends StatelessWidget {
                       ),
                     );
                   },
-                  child: Text("Ver Detalles"),
+                  child: const Text("Ver Detalles"),
                 ),
               ],
             ),
@@ -143,16 +172,14 @@ class ProductCard extends StatelessWidget {
 class ProductDetailScreen extends StatelessWidget {
   final Map<String, dynamic> product;
 
-  const ProductDetailScreen({required this.product});
+  const ProductDetailScreen({super.key, required this.product});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Detalles del Producto"),
-      ),
+      appBar: AppBar(title: const Text("Detalles del Producto")),
       body: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -162,39 +189,37 @@ class ProductDetailScreen extends StatelessWidget {
               height: 300,
               fit: BoxFit.cover,
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Text(
               product["name"],
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
               "\$${product["price"].toString()}",
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 20,
                 color: Colors.green,
               ),
             ),
-            SizedBox(height: 20),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               "Descripción del producto: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-              style: TextStyle(
-                fontSize: 16,
-              ),
+              style: TextStyle(fontSize: 16),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Center(
               child: ElevatedButton(
                 onPressed: () {
-                  // Acción para agregar al carrito
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Producto agregado al carrito")),
+                    const SnackBar(
+                        content: Text("Producto agregado al carrito")),
                   );
                 },
-                child: Text("Agregar al Carrito"),
+                child: const Text("Agregar al Carrito"),
               ),
             ),
           ],

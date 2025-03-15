@@ -5,7 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart'; // Pantalla de Admin
 import 'package:moonpv/screens/business_owner_screen.dart'; // Pantalla de Dueño de Negocio
 import 'package:moonpv/screens/store_screen.dart'; // Pantalla de Usuario Normal
-import 'package:moonpv/services/auth_service.dart'; // Servicio de autenticación con Google
+import 'package:moonpv/services/app_images.dart';
+import 'package:moonpv/services/auth_service.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Servicio de autenticación con Google
 
 class LoginScreen extends StatelessWidget {
   final TextEditingController _emailController = TextEditingController();
@@ -16,6 +18,7 @@ class LoginScreen extends StatelessWidget {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Función para iniciar sesión
+
   Future<void> _login(BuildContext context) async {
     final String email = _emailController.text.trim();
     final String password = _passwordController.text.trim();
@@ -36,6 +39,13 @@ class LoginScreen extends StatelessWidget {
         email: email,
         password: password,
       );
+
+      // Guardar el estado de autenticación en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(
+          'isLoggedIn', true); // Guardar estado de autenticación
+      await prefs.setString(
+          'userId', userCredential.user!.uid); // Guardar ID del usuario
 
       // Verificar si el usuario existe en Firestore
       final DocumentSnapshot userDoc = await _firestore
@@ -69,8 +79,63 @@ class LoginScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('isLoggedIn'); // Eliminar el estado de autenticación
+    await prefs.remove('userId'); // Eliminar el ID del usuario
+
+    // Cerrar sesión en Firebase
+    await FirebaseAuth.instance.signOut();
+
+    // Redirigir a la pantalla de login
+    Get.off(() => LoginScreen());
+  }
+
+  Future<void> _checkLoginStatus(BuildContext context) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+      if (isLoggedIn) {
+        // Obtener el ID del usuario guardado
+        final String userId = prefs.getString('userId') ?? '';
+
+        // Verificar si el usuario existe en Firestore
+        final DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (userDoc.exists) {
+          // Obtener el rol del usuario
+          final String role = userDoc['role'];
+
+          // Redirigir según el rol
+          if (role == "Admin") {
+            Get.off(() => SalespointNewSalePage()); // Pantalla de Admin
+          } else if (role == "Dueño de Negocio") {
+            Get.off(
+                () => BusinessOwnerScreen()); // Pantalla de Dueño de Negocio
+          } else {
+            Get.off(() => StoreScreen()); // Pantalla de Usuario Normal
+          }
+        } else {
+          // Si el usuario no está en la colección `users`, redirigir a la pantalla de usuario normal
+          Get.off(() => StoreScreen());
+        }
+      }
+    } catch (e) {
+      print('Error al verificar el estado de autenticación: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Verificar el estado de autenticación al iniciar la pantalla
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkLoginStatus(context);
+    });
+
     return Scaffold(
       appBar: AppBar(title: Text("Login")),
       body: Padding(
@@ -96,8 +161,7 @@ class LoginScreen extends StatelessWidget {
             // Botón para iniciar sesión
             ElevatedButton(
               onPressed: () async {
-                await _login(
-                    context); // Usar async/await para evitar bloquear la UI
+                await _login(context);
               },
               child: Text("Iniciar Sesión"),
             ),
@@ -107,16 +171,13 @@ class LoginScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () async {
                 try {
-                  // Ejecuta en un hilo secundario usando Future
-                  await Future.delayed(Duration.zero, () async {
-                    final credenciales = await AuthService().signInWithGoogle();
-                    debugPrint(credenciales.user?.displayName);
-                    debugPrint(credenciales.user?.photoURL);
-                    debugPrint(credenciales.user?.email);
+                  final credenciales = await AuthService().signInWithGoogle();
+                  debugPrint(credenciales.user?.displayName);
+                  debugPrint(credenciales.user?.photoURL);
+                  debugPrint(credenciales.user?.email);
 
-                    // Redirigir a la pantalla después de la autenticación
-                    Get.off(() => StoreScreen());
-                  });
+                  // Redirigir a la pantalla después de la autenticación
+                  Get.off(() => StoreScreen());
                 } catch (e) {
                   Get.snackbar(
                     "Error",
@@ -133,7 +194,7 @@ class LoginScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Image.asset(
-                    'assets/images/google.png', // Asegúrate de tener este archivo en tu carpeta de assets
+                    AppImages.google,
                     height: 24,
                   ),
                   SizedBox(width: 10),
