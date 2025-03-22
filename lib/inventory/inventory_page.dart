@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
 import 'package:moonpv/services/barcode_scanner_page.dart';
+import 'package:path_provider/path_provider.dart';
 
 class InventoryPage extends StatefulWidget {
   @override
@@ -48,45 +49,66 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> _pickImageProducts(int productIndex) async {
     showModalBottomSheet(
-        context: context,
-        builder: (BuildContext context) {
-          return SafeArea(
-            child: Wrap(
-              children: <Widget>[
-                ListTile(
-                  leading: Icon(Icons.photo_library),
-                  title: Text('Galería'),
-                  onTap: () async {
-                    final pickedFile =
-                        await picker.pickImage(source: ImageSource.gallery);
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Galería'),
+                onTap: () async {
+                  final pickedFile =
+                      await picker.pickImage(source: ImageSource.gallery);
+                  if (pickedFile != null) {
+                    // Crear una copia del archivo en caché
+                    final File imageFile = File(pickedFile.path);
+                    final File cachedImageFile =
+                        await _copyFileToCache(imageFile);
+
                     setState(() {
-                      if (pickedFile != null) {
-                        productControllers[productIndex]['imagen'] =
-                            File(pickedFile.path);
-                      }
+                      productControllers[productIndex]['imagen'] =
+                          cachedImageFile; // Guardar como File
                     });
-                    Navigator.of(context).pop();
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.photo_camera),
-                  title: Text('Cámara'),
-                  onTap: () async {
-                    final pickedFile =
-                        await picker.pickImage(source: ImageSource.camera);
+                  }
+                  Navigator.of(context).pop(); // Cerrar el modal
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_camera),
+                title: Text('Cámara'),
+                onTap: () async {
+                  final pickedFile =
+                      await picker.pickImage(source: ImageSource.camera);
+                  if (pickedFile != null) {
+                    // Crear una copia del archivo en caché
+                    final File imageFile = File(pickedFile.path);
+                    final File cachedImageFile =
+                        await _copyFileToCache(imageFile);
+
                     setState(() {
-                      if (pickedFile != null) {
-                        productControllers[productIndex]['imagen'] =
-                            File(pickedFile.path);
-                      }
+                      productControllers[productIndex]['imagen'] =
+                          cachedImageFile; // Guardar como File
                     });
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ],
-            ),
-          );
-        });
+                  }
+                  Navigator.of(context).pop(); // Cerrar el modal
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+// Método para copiar el archivo a la caché
+  Future<File> _copyFileToCache(File file) async {
+    final Directory cacheDir =
+        await getTemporaryDirectory(); // Obtener el directorio temporal
+    final String fileName = '${DateTime.now().millisecondsSinceEpoch}.png';
+    final String cachedFilePath = '${cacheDir.path}/$fileName';
+
+    return file.copy(cachedFilePath); // Copiar el archivo a la caché
   }
 
   Future<List<Map<String, dynamic>>> _fetchProductsForBusiness(
@@ -161,16 +183,17 @@ class _InventoryPageState extends State<InventoryPage> {
 //  Subir imagen a Firebase Storage
   Future<String?> _uploadImageToFirebase(File image) async {
     try {
-      String fileName = 'logos/${DateTime.now().millisecondsSinceEpoch}.png';
+      String fileName =
+          'productos/${DateTime.now().millisecondsSinceEpoch}.png';
       Reference storageReference =
           FirebaseStorage.instance.ref().child(fileName);
 
-      // Cargar la imagen
+      // Subir la imagen
       UploadTask uploadTask = storageReference.putFile(image);
       await uploadTask;
 
       // Obtener la URL de descarga
-      String? downloadUrl = await storageReference.getDownloadURL();
+      String downloadUrl = await storageReference.getDownloadURL();
       print('Imagen subida: $downloadUrl'); // Imprimir la URL de la imagen
 
       return downloadUrl;
@@ -192,13 +215,20 @@ class _InventoryPageState extends State<InventoryPage> {
     String? logoUrl;
     if (_image != null) {
       logoUrl = await _uploadImageToFirebase(_image!);
+      if (logoUrl == null) {
+        Get.snackbar('Error', 'No se pudo subir la imagen');
+        return;
+      }
+    } else {
+      logoUrl =
+          'https://ejemplo.com/imagen_predeterminada.png'; // URL de imagen predeterminada
     }
 
     await FirebaseFirestore.instance.collection('negocios').add({
       'nombreEmpresa': _companyNameController.text,
       'nombreDueno': _ownerNameController.text,
       'telefono': _phoneController.text,
-      'logo': logoUrl,
+      'logo': logoUrl, // URL de la imagen o imagen predeterminada
     });
 
     Get.snackbar('Éxito', 'Negocio agregado correctamente');
@@ -206,48 +236,107 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   // Agregar productos a Firestore
-  Future<void> _addProducts(String businessId) async {
-    for (var product in productsList) {
-      String productCode = product['codigo'];
-      String productName = product['nombre'];
-      String productPrice = product['precio'];
-      String productQuantity = product['cantidad'];
-      String? productImageUrl = product['imagen'];
 
-      // Solo subir la imagen si se seleccionó una
-      // if (product['imagen'] != null) {
-      //   productImageUrl = await _uploadImageToFirebase(File(product[
-      //       'imagen'])); // Asegúrate de que 'imagen' sea el path correcto.
-      // }
-      if (product['imagen'] != null) {
-        productImageUrl =
-            await _uploadImageToFirebase(File(product['imagen'].path));
+  Future<void> _addProducts(String businessId) async {
+    try {
+      print('Iniciando proceso de guardado de productos...');
+
+      print('Lista de productos antes de guardar: ${productsList.length}');
+      print('Contenido de productsList: $productsList');
+      for (var i = 0; i < productsList.length; i++) {
+        print('Producto $i: ${productsList[i]}');
       }
 
-      // Verificar si el código de producto ya existe en Firestore
-      bool codeExists = await _checkIfProductCodeExists(productCode);
-      if (codeExists) {
-        Get.snackbar('Error', 'El código de producto $productCode ya existe.');
-        return;
-      } else {
-        List<String> searchKeywords = _generateSearchKeywords(productName);
+      for (var product in productsList) {
+        String productCode = product['codigo'];
+        String productName = product['nombre'];
+        String productPrice = product['precio'];
+        String productQuantity = product['cantidad'];
+        String? productImageUrl;
 
-        await FirebaseFirestore.instance.collection('productos').add({
+        // Validar que los campos no estén vacíos
+        print('Validando producto:');
+        print('Código: $productCode');
+        print('Nombre: $productName');
+        print('Precio: $productPrice');
+        print('Cantidad: $productQuantity');
+
+        if (productCode.isEmpty ||
+            productName.isEmpty ||
+            productPrice.isEmpty ||
+            productQuantity.isEmpty) {
+          print('Error: Faltan campos obligatorios');
+          Get.snackbar(
+              'Error', 'Por favor llena todos los campos obligatorios');
+          return;
+        }
+
+        // Subir la imagen si existe
+        if (product['imagen'] != null) {
+          print('Subiendo imagen...');
+          productImageUrl = await _uploadImageToFirebase(product['imagen']);
+          if (productImageUrl == null) {
+            print('Error: No se pudo subir la imagen');
+            Get.snackbar('Error', 'No se pudo subir la imagen');
+            return;
+          }
+          print('Imagen subida correctamente: $productImageUrl');
+        } else {
+          print('No se seleccionó una imagen');
+        }
+
+        // Verificar si el código de producto ya existe
+        print('Verificando si el código de producto ya existe...');
+        bool codeExists = await _checkIfProductCodeExists(productCode);
+        print('Código de producto existe: $codeExists');
+
+        if (codeExists) {
+          print('Error: El código de producto $productCode ya existe');
+          Get.snackbar(
+              'Error', 'El código de producto $productCode ya existe.');
+          return;
+        }
+
+        // Convertir cantidad y precio a los tipos adecuados
+        int quantity = int.tryParse(productQuantity) ?? 0;
+        double price = double.tryParse(productPrice) ?? 0.0;
+
+        // Guardar el producto en Firestore
+        print('Guardando producto en Firestore...');
+        DocumentReference docRef =
+            await FirebaseFirestore.instance.collection('productos').add({
           'negocioId': businessId,
           'codigo': productCode,
           'nombre': productName,
-          'cantidad': productQuantity,
-          'precio': double.tryParse(productPrice) ?? 0.0,
-          'searchKeywords': searchKeywords,
+          'cantidad': quantity,
+          'precio': price,
+          'searchKeywords': _generateSearchKeywords(productName),
           'createdAt': FieldValue.serverTimestamp(),
           'sold': false,
-          'imagen': productImageUrl, // Guardar la URL de la imagen
+          'imagen': productImageUrl,
         });
-      }
-    }
 
-    Get.snackbar('Éxito', 'Productos agregados correctamente');
-    _clearProductForm();
+        print('Producto guardado con ID: ${docRef.id}');
+      }
+
+      print('Todos los productos se guardaron correctamente');
+      Get.snackbar('Éxito', 'Productos agregados correctamente');
+      _clearProductForm();
+
+      // Imprimir la información de todos los productos agregados
+      print('Información de todos los productos agregados:');
+      for (var product in productsList) {
+        print('Código: ${product['codigo']}');
+        print('Nombre: ${product['nombre']}');
+        print('Precio: ${product['precio']}');
+        print('Cantidad: ${product['cantidad']}');
+        print('Imagen: ${product['imagen']}');
+        print('-------------------------');
+      }
+    } catch (e) {
+      print('Error al guardar productos: $e');
+      Get.snackbar('Error', 'Ocurrió un error al guardar los productos');
+    }
   }
 
   List<String> _generateSearchKeywords(String name) {
@@ -391,60 +480,109 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // Guardar producto actual
 // Guardar producto actual
-  void _saveCurrentProduct() async {
-    if (productControllers.isNotEmpty) {
-      String productCode = productControllers.last['codigo']!.text;
-      String productName = productControllers.last['nombre']!.text;
-      String productPrice = productControllers.last['precio']!.text;
-      String productQuantity = productControllers.last['cantidad']!.text;
 
-      if (productCode.isNotEmpty &&
-          productName.isNotEmpty &&
-          productPrice.isNotEmpty &&
-          productQuantity.isNotEmpty) {
-        // Aquí se guarda la imagen localmente, pero no se sube aún
-        String? productImageUrl;
-        if (productControllers.last['imagen'] != null) {
-          productImageUrl = (productControllers.last['imagen'] as File).path;
-        }
-        if (editingIndex != null) {
-          // Actualizar producto existente
-          productsList[editingIndex!] = {
-            'codigo': productCode,
-            'nombre': productName,
-            'precio': productPrice,
-            'cantidad': productQuantity,
-            'imagen': productImageUrl,
-          };
-        } else {
-          // Agregar nuevo producto
-          productsList.add({
-            'codigo': productCode,
-            'nombre': productName,
-            'precio': productPrice,
-            'cantidad': productQuantity,
-            //'imagen': productImageUrl,
-            'imagen': productControllers.last['imagen'],
-          });
-        }
+  void _saveCurrentProduct() {
+    print('Guardando producto en la lista...');
 
-        setState(() {
-          productControllers.removeLast();
-          productControllers.add({
-            'codigo': TextEditingController(),
-            'nombre': TextEditingController(),
-            'precio': TextEditingController(),
-            'cantidad': TextEditingController(),
-            'imagen': null,
-          });
-          editingIndex = null; // Reiniciar el índice de edición
-        });
-
-        print('Lista de productos: $productsList'); // Imprimir aquí
-      } else {
-        Get.snackbar('Error', 'Completa el formulario antes de continuar');
-      }
+    if (productControllers.isEmpty) {
+      print('Error: No hay productos en productControllers');
+      Get.snackbar('Error', 'Debes agregar al menos un producto');
+      return;
     }
+
+    // Obtener el último producto ingresado en los controladores
+    final int lastIndex = productControllers.length - 1;
+    final TextEditingController codigoController =
+        productControllers[lastIndex]['codigo'];
+    final TextEditingController nombreController =
+        productControllers[lastIndex]['nombre'];
+    final TextEditingController precioController =
+        productControllers[lastIndex]['precio'];
+    final TextEditingController cantidadController =
+        productControllers[lastIndex]['cantidad'];
+    final dynamic imagen = productControllers[lastIndex]
+        ['imagen']; // Puede ser un File o String (URL)
+
+    // Extraer valores de los controladores
+    final String codigo = codigoController.text.trim();
+    final String nombre = nombreController.text.trim();
+    final String precio = precioController.text.trim();
+    final String cantidad = cantidadController.text.trim();
+
+    // Validar que los campos no estén vacíos
+    if (codigo.isEmpty ||
+        nombre.isEmpty ||
+        precio.isEmpty ||
+        cantidad.isEmpty) {
+      print('Error: Algunos campos están vacíos');
+      Get.snackbar('Error', 'Todos los campos son obligatorios');
+      return;
+    }
+
+    if (editingIndex != null) {
+      // Modo edición: Actualizar el producto existente
+      setState(() {
+        productsList[editingIndex!] = {
+          'codigo': codigo,
+          'nombre': nombre,
+          'precio': precio,
+          'cantidad': cantidad,
+          'imagen': imagen, // Puede ser null, File o URL
+        };
+        editingIndex = null; // Salir del modo edición
+      });
+
+      print('Producto actualizado correctamente:');
+    } else {
+      // Validar si el producto ya está en la lista (por código)
+      bool productoExistente =
+          productsList.any((product) => product['codigo'] == codigo);
+
+      if (productoExistente) {
+        print('Error: El producto con código $codigo ya existe en la lista');
+        Get.snackbar('Error', 'El código de producto ya está en la lista');
+        return;
+      }
+
+      // Agregar producto a la lista
+      setState(() {
+        productsList.add({
+          'codigo': codigo,
+          'nombre': nombre,
+          'precio': precio,
+          'cantidad': cantidad,
+          'imagen': imagen, // Puede ser null si no se ha seleccionado imagen
+        });
+      });
+
+      print('Producto agregado correctamente:');
+    }
+
+    // Imprimir la lista después de agregar o actualizar el producto
+    for (var product in productsList) {
+      print('Código: ${product['codigo']}');
+      print('Nombre: ${product['nombre']}');
+      print('Precio: ${product['precio']}');
+      print('Cantidad: ${product['cantidad']}');
+      print('Imagen: ${product['imagen']}');
+      print('-------------------------');
+    }
+
+    // Limpiar los campos después de guardar
+    _clearProductFields();
+  }
+
+  void _clearProductFields() {
+    setState(() {
+      if (productControllers.isNotEmpty) {
+        productControllers.last['codigo'].clear();
+        productControllers.last['nombre'].clear();
+        productControllers.last['precio'].clear();
+        productControllers.last['cantidad'].clear();
+        productControllers.last['imagen'] = null;
+      }
+    });
+    print('Campos de producto limpiados');
   }
 
   void _deleteProduct(int index) {
@@ -576,17 +714,25 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
+  //Index].
   void _editProduct(int index) {
     final product = productsList[index];
+
     productControllers.last['codigo']!.text = product['codigo'];
     productControllers.last['nombre']!.text = product['nombre'];
     productControllers.last['precio']!.text = product['precio'];
     productControllers.last['cantidad']!.text = product['cantidad'];
 
-    // Si hay una imagen, cargarla
+    // Manejo seguro de la imagen
     if (product['imagen'] != null) {
-      productControllers.last['imagen'] =
-          File(product['imagen']); // o la URL si es necesario
+      if (product['imagen'] is File) {
+        // Si ya es un File, lo asignamos directamente
+        productControllers.last['imagen'] = product['imagen'];
+      } else if (product['imagen'] is String) {
+        // Si es una URL, no podemos asignarla como File, pero podríamos descargarla si es necesario
+        print("La imagen es una URL: ${product['imagen']}");
+        // Aquí podrías convertir la URL en un File si lo requieres, pero eso depende de tu flujo de trabajo
+      }
     }
 
     setState(() {
@@ -926,11 +1072,27 @@ class _InventoryPageState extends State<InventoryPage> {
           SizedBox(height: 16.0),
           ElevatedButton(
             onPressed: () {
+              // Validar que se haya seleccionado un negocio
               if (selectedBusinessId == null) {
                 Get.snackbar('Error', 'Por favor selecciona un negocio');
+
                 return;
               }
 
+              // Validar que todos los campos estén llenos
+
+              // Imprimir la lista de productos antes de guardar
+              print('Lista de productos antes de guardar:');
+              for (var product in productsList) {
+                print('Código: ${product['codigo']}');
+                print('Nombre: ${product['nombre']}');
+                print('Precio: ${product['precio']}');
+                print('Cantidad: ${product['cantidad']}');
+                print('Imagen: ${product['imagen']}');
+                print('-------------------------');
+              }
+
+              // Si todo está correcto, guardar los productos
               _addProducts(selectedBusinessId!);
             },
             child: Text('Guardar Productos'),
@@ -965,8 +1127,9 @@ class _InventoryPageState extends State<InventoryPage> {
                   DataCell(
                     product['imagen'] == null
                         ? Text('Sin imagen')
-                        : Image.network(
-                            product['imagen'],
+                        : Image.file(
+                            // Usar Image.file para mostrar el archivo en caché
+                            product['imagen'], // Asegúrate de que sea un File
                             height: 50,
                             width: 50,
                             fit: BoxFit.cover,
