@@ -6,7 +6,9 @@ import 'package:get/get.dart';
 import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/inventory/sales.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
+import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
+import 'package:moonpv/services/barcode_scanner_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 
@@ -23,6 +25,7 @@ class SalespointNewSalePage extends StatefulWidget {
 }
 
 class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
+  bool _isInitialized = false;
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _quantityController =
       TextEditingController(text: '1');
@@ -40,11 +43,22 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_codeFocusNode);
     });
     _codeController.text = widget.initialProductCode;
-    _getDevices(); // Obtener dispositivos Bluetooth al iniciar
+    _getDevices();
+    // Obtener dispositivos Bluetooth al iniciar
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_isInitialized) {
+      _isInitialized = true; // Marcar como inicializado
+      _verificarAutenticacion(); // Verificar autenticación después de que el contexto esté listo
+    }
   }
 
   Future<void> _getDevices() async {
@@ -140,6 +154,182 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
         );
       },
     );
+  }
+
+  Future<void> _guardarVenta() async {
+    print('Guardando venta...'); // Mensaje de depuración
+
+    // Verificar si _saleDetails está vacío
+    if (_saleDetails.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No hay productos en la venta')),
+      );
+      return;
+    }
+
+    // Calcular el gran total de la venta
+    double grandTotal =
+        _saleDetails.fold(0.0, (sum, item) => sum + item['total']);
+
+    // Verificar que grandTotal no sea cero
+    if (grandTotal == 0.0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('El total de la venta es cero')),
+      );
+      return;
+    }
+
+    // Crear un mapa para almacenar los detalles de la venta
+    Map<String, dynamic> venta = {
+      'fecha': FieldValue.serverTimestamp(), // Fecha y hora de la venta
+      'grandTotal': grandTotal, // Total general de la venta
+      'productos': [], // Lista de productos vendidos
+    };
+
+    // Recorrer cada producto en _saleDetails
+    for (var product in _saleDetails) {
+      // Verificar que el producto tenga los campos necesarios
+      if (product['codigo'] == null ||
+          product['cantidad'] == null ||
+          product['precio'] == null) {
+        print(
+            'Error: El producto está incompleto: $product'); // Mensaje de depuración
+        continue; // Saltar este producto
+      }
+
+      // Buscar el producto en Firestore para obtener su ID y negocioId
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('productos')
+          .where('codigo', isEqualTo: product['codigo'])
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final productoFirestore = querySnapshot.docs.first;
+        final String productoId = productoFirestore.id;
+        final String negocioId = productoFirestore['negocioId'];
+
+        // Agregar los detalles del producto a la venta
+        venta['productos'].add({
+          'productoId': productoId, // ID del producto
+          'negocioId': negocioId, // ID del negocio al que pertenece el producto
+          'cantidad': product['cantidad'], // Cantidad vendida
+          'precioVenta': product['precio'], // Precio al que se vendió
+          'total': product['total'], // Total del producto (precio * cantidad)
+        });
+
+        // Disminuir la cantidad del producto en la colección "productos"
+        await _disminuirCantidadProducto(productoId, product['cantidad']);
+      } else {
+        print(
+            'Producto no encontrado en Firestore: ${product['codigo']}'); // Mensaje de depuración
+      }
+    }
+
+    // Verificar si la venta tiene productos válidos
+    if (venta['productos'].isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('No se encontraron productos válidos para la venta')),
+      );
+      return;
+    }
+
+    try {
+      // Inspeccionar el objeto venta antes de guardarlo
+      print('Objeto venta a guardar: $venta'); // Mensaje de depuración
+
+      // Guardar la venta en Firestore
+      await FirebaseFirestore.instance.collection('sales').add(venta);
+      print(
+          'Venta guardada correctamente en Firestore'); // Mensaje de depuración
+
+      // Mostrar mensaje de éxito
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Venta guardada correctamente')),
+      );
+
+      // Limpiar la lista de productos vendidos
+      setState(() {
+        _saleDetails.clear();
+      });
+    } catch (e) {
+      // Manejar errores
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar la venta: $e')),
+      );
+      print('Error al guardar la venta: $e'); // Mensaje de depuración
+    }
+  }
+
+  Future<void> _disminuirCantidadProducto(
+      String productoId, int cantidadVendida) async {
+    try {
+      // Obtener la referencia al documento del producto
+      final productoRef =
+          FirebaseFirestore.instance.collection('productos').doc(productoId);
+
+      // Disminuir la cantidad del producto
+      await productoRef.update({
+        'cantidad':
+            FieldValue.increment(-cantidadVendida), // Reducir la cantidad
+      });
+
+      print(
+          'Cantidad disminuida para el producto: $productoId'); // Mensaje de depuración
+    } catch (e) {
+      // Manejar errores
+      print(
+          'Error al disminuir la cantidad del producto: $e'); // Mensaje de depuración
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Error al disminuir la cantidad del producto: $e')),
+      );
+    }
+  }
+
+  Future<void> _verificarAutenticacion() async {
+    try {
+      // Obtener el usuario actual
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+        // El usuario está autenticado
+        print('Usuario autenticado: ${user.uid}');
+        _mostrarSnackBar('Bienvenido, ${user.email}');
+      } else {
+        // El usuario no está autenticado
+        print('Usuario no autenticado');
+        _mostrarSnackBar('No hay un usuario autenticado');
+
+        // Redirigir al usuario a la pantalla de inicio de sesión
+        Get.offAll(() => LoginScreen()); // Usando GetX para navegación
+      }
+    } catch (e) {
+      // Manejar errores
+      print('Error al verificar autenticación: $e');
+      _mostrarSnackBar('Error al verificar autenticación: $e');
+    }
+  }
+
+  Future<String?> _obtenerRolUsuario() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      return userDoc['role']; // Suponiendo que el campo se llama "rol"
+    }
+    return null;
+  }
+
+  void _mostrarSnackBar(String mensaje) {
+    // Retrasar la ejecución hasta después de la construcción
+    Future.microtask(() {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mensaje)),
+      );
+    });
   }
 
   void _finalizarVenta() {
@@ -327,66 +517,6 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     );
   }
 
-  Future<void> _guardarVenta() async {
-    try {
-      // Calcular el gran total de la venta
-      double grandTotal =
-          _saleDetails.fold(0.0, (sum, item) => sum + item['total']);
-
-      // Crear un mapa para almacenar los detalles de la venta
-      Map<String, dynamic> venta = {
-        'fecha': FieldValue.serverTimestamp(), // Fecha y hora de la venta
-        'grandTotal': grandTotal, // Total general de la venta
-        'productos': [], // Lista de productos vendidos
-      };
-
-      // Recorrer cada producto en _saleDetails
-      for (var product in _saleDetails) {
-        // Buscar el producto en Firestore para obtener su ID y negocioId
-        final querySnapshot = await FirebaseFirestore.instance
-            .collection('productos')
-            .where('codigo', isEqualTo: product['codigo'])
-            .get();
-
-        if (querySnapshot.docs.isNotEmpty) {
-          final productoFirestore = querySnapshot.docs.first;
-          final String productoId = productoFirestore.id;
-          final String negocioId = productoFirestore['negocioId'];
-
-          // Agregar los detalles del producto a la venta
-          venta['productos'].add({
-            'productoId': productoId, // ID del producto
-            'negocioId':
-                negocioId, // ID del negocio al que pertenece el producto
-            'cantidad': product['cantidad'], // Cantidad vendida
-            'precioVenta': product['precio'], // Precio al que se vendió
-            'total': product['total'], // Total del producto (precio * cantidad)
-          });
-        } else {
-          print('Producto no encontrado en Firestore: ${product['codigo']}');
-        }
-      }
-
-      // Guardar la venta en Firestore
-      await FirebaseFirestore.instance.collection('sales').add(venta);
-
-      // Mostrar mensaje de éxito
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Venta guardada correctamente')),
-      );
-
-      // Limpiar la lista de productos vendidos
-      setState(() {
-        _saleDetails.clear();
-      });
-    } catch (e) {
-      // Manejar errores
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar la venta: $e')),
-      );
-    }
-  }
-
   // Método para obtener el negocioId basado en el código del producto
   Future<String?> _getNegocioIdByProductCode(String productCode) async {
     try {
@@ -409,22 +539,27 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   Future<void> _actualizarInventario(
       String productCode, int cantidadVendida) async {
     try {
-      // Lógica para actualizar la cantidad en el inventario
-      await FirebaseFirestore.instance
-          .collection('productos')
-          .doc(productCode)
-          .update({
+      // Verificar si el producto existe en Firestore
+      final productoRef =
+          FirebaseFirestore.instance.collection('productos').doc(productCode);
+      final productoDoc = await productoRef.get();
+
+      if (!productoDoc.exists) {
+        print(
+            'El producto con código $productCode no existe en Firestore'); // Mensaje de depuración
+        return;
+      }
+
+      // Actualizar la cantidad en el inventario
+      await productoRef.update({
         'cantidad':
             FieldValue.increment(-cantidadVendida), // Reducir la cantidad
       });
+
+      print(
+          'Inventario actualizado para el producto: $productCode'); // Mensaje de depuración
     } catch (e) {
-      // Manejo de errores para document not found
-      if (e is FirebaseException && e.code == 'not-found') {
-        print('El documento con el código $productCode no fue encontrado.');
-        // Aquí puedes agregar lógica adicional, como mostrar un mensaje al usuario
-      } else {
-        print('Error al actualizar el inventario: $e');
-      }
+      print('Error al actualizar el inventario: $e'); // Mensaje de depuración
     }
   }
 
@@ -479,11 +614,10 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
             _codeController.clear(); // Limpiar el campo de código
           });
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Producto añadido: ${product['nombre'] ?? 'Desconocido'}')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text('Producto añadido: ${product['nombre'] ?? 'Desconocido'}'),
+          ));
 
           FocusScope.of(context).requestFocus(_codeFocusNode);
         } else {
@@ -500,8 +634,9 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al buscar el producto')),
+        SnackBar(content: Text('Error al buscar el producto: $e')),
       );
+      print('Error al buscar el producto: $e'); // Mensaje de depuración
     }
   }
 
@@ -560,57 +695,105 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
         }),
       ),
       drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: <Widget>[
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blue,
-              ),
-              child: Text(
-                'Opciones',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
+        child: FutureBuilder<String?>(
+          future: _obtenerRolUsuario(), // Obtener el rol del usuario
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(
+                  child:
+                      CircularProgressIndicator()); // Mostrar un indicador de carga
+            }
+
+            final String? rol = snapshot.data;
+
+            return ListView(
+              padding: EdgeInsets.zero,
+              children: <Widget>[
+                DrawerHeader(
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                  ),
+                  child: Text(
+                    'Opciones',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.inventory),
-              title: Text('Inventario'),
-              onTap: () {
-                Get.to(InventoryPage());
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.sell),
-              title: Text('Ventas'),
-              onTap: () {
-                Get.to(SalesPage());
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.person),
-              title: Text('Crear Usuarios'),
-              onTap: () {
-                Get.to(CreateUserScreen());
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Configuración'),
-              onTap: () {
-                // Lógica de navegación
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('Cerrar sesión'),
-              onTap: () {
-                _logout(context);
-              },
-            ),
-          ],
+                ListTile(
+                  leading: Icon(Icons.inventory),
+                  title: Text('Inventario'),
+                  onTap: () {
+                    Get.to(InventoryPage());
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.sell),
+                  title: Text('Ventas'),
+                  onTap: () {
+                    Get.to(SalesPage());
+                  },
+                ),
+                // Menú de administrador (solo para usuarios con rol "Admin")
+                if (rol == 'Admin') ...[
+                  ListTile(
+                    leading: Icon(Icons.admin_panel_settings),
+                    title: Text('Admin'),
+                    onTap: () {
+                      // No hace nada, solo es un título
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24.0), // Sangría
+                    child: ListTile(
+                      leading: Icon(Icons.inventory),
+                      title: Text('Inventario'),
+                      onTap: () {
+                        Get.to(InventoryPage());
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24.0), // Sangría
+                    child: ListTile(
+                      leading: Icon(Icons.person),
+                      title: Text('Crear Usuarios'),
+                      onTap: () {
+                        Get.to(CreateUserScreen());
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24.0), // Sangría
+                    child: ListTile(
+                      leading: Icon(Icons.calculate),
+                      title: Text('Conteo'),
+                      onTap: () {
+                        // Navegar a la pantalla de conteo
+                        Get.to(
+                            ConteoPage()); // Asegúrate de crear esta pantalla
+                      },
+                    ),
+                  ),
+                ],
+                ListTile(
+                  leading: Icon(Icons.settings),
+                  title: Text('Configuración'),
+                  onTap: () {
+                    // Lógica de navegación
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('Cerrar sesión'),
+                  onTap: () {
+                    _logout(context);
+                  },
+                ),
+              ],
+            );
+          },
         ),
       ),
       body: Column(
@@ -644,6 +827,31 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                     decoration: InputDecoration(
                       labelText: 'Código',
                       border: OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(Icons.camera_alt),
+                        onPressed: () async {
+                          // Abre la cámara para escanear el código de barras
+                          final String? barcode = await Navigator.push<String>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => BarcodeScannerPage(
+                                onScan: (barcode) {
+                                  // Asigna el código escaneado al campo de texto
+                                  _codeController.text = barcode;
+                                  // Llama a la función para buscar el producto por el código
+                                  _searchProductByCode(barcode);
+                                },
+                              ),
+                            ),
+                          );
+
+                          if (barcode != null) {
+                            _codeController.text = barcode;
+                            _searchProductByCode(
+                                barcode); // Llama a la búsqueda con el código
+                          }
+                        },
+                      ),
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: <TextInputFormatter>[
@@ -742,6 +950,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                 ),
               ),
             ),
+
             // Textos y botón "Eliminar Producto" alineados hasta abajo
             Container(
               padding: EdgeInsets.all(16.0),
@@ -758,7 +967,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                         color: Colors.blue.shade100,
                       ),
                       _buildTotalContainer(
-                        title: 'Total \$',
+                        title: 'Total Dlls \$',
                         value: '\$${totalDollars.toStringAsFixed(2)}',
                         color: Colors.green.shade100,
                       ),
