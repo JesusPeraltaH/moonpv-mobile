@@ -25,6 +25,7 @@ class SalespointNewSalePage extends StatefulWidget {
 }
 
 class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
+  bool _mostrarMenuAdmin = false;
   bool _isInitialized = false;
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _quantityController =
@@ -318,7 +319,11 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
           .collection('users')
           .doc(user.uid)
           .get();
-      return userDoc['role']; // Suponiendo que el campo se llama "rol"
+      if (userDoc.exists && userDoc.data() != null) {
+        final role = userDoc['role'];
+        print('Rol del usuario: $role'); // Depuración
+        return role;
+      }
     }
     return null;
   }
@@ -667,6 +672,49 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     );
   }
 
+  void _mostrarDialogoContrasena(BuildContext context) {
+    TextEditingController _contrasenaController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Ingrese la contraseña de administrador'),
+          content: TextField(
+            controller: _contrasenaController,
+            obscureText: true,
+            decoration: InputDecoration(
+              labelText: 'Contraseña',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: Text('Cancelar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('Aceptar'),
+              onPressed: () {
+                if (_contrasenaController.text == 'Moonconcept') {
+                  setState(() {
+                    _mostrarMenuAdmin = true;
+                  });
+                  Navigator.of(context).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Contraseña incorrecta')),
+                  );
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     int totalItems = _saleDetails.fold<int>(
@@ -696,12 +744,12 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
       ),
       drawer: Drawer(
         child: FutureBuilder<String?>(
-          future: _obtenerRolUsuario(), // Obtener el rol del usuario
+          future: _obtenerRolUsuario(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Center(
-                  child:
-                      CircularProgressIndicator()); // Mostrar un indicador de carga
+                child: CircularProgressIndicator(),
+              );
             }
 
             final String? rol = snapshot.data;
@@ -713,20 +761,28 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                   decoration: BoxDecoration(
                     color: Colors.blue,
                   ),
-                  child: Text(
-                    'Opciones',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Opciones',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                        ),
+                      ),
+                      SizedBox(height: 8), // Espacio entre el título y el rol
+                      if (rol != null) // Solo mostrar el rol si no es nulo
+                        Text(
+                          '$rol', // Muestra el rol obtenido de Firestore
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
+                    ],
                   ),
-                ),
-                ListTile(
-                  leading: Icon(Icons.inventory),
-                  title: Text('Inventario'),
-                  onTap: () {
-                    Get.to(InventoryPage());
-                  },
                 ),
                 ListTile(
                   leading: Icon(Icons.sell),
@@ -735,8 +791,8 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                     Get.to(SalesPage());
                   },
                 ),
-                // Menú de administrador (solo para usuarios con rol "Admin")
-                if (rol == 'Admin') ...[
+                if (rol == 'Admin' ||
+                    (rol == 'Empleado' && _mostrarMenuAdmin)) ...[
                   ListTile(
                     leading: Icon(Icons.admin_panel_settings),
                     title: Text('Admin'),
@@ -745,7 +801,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                     },
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(left: 24.0), // Sangría
+                    padding: const EdgeInsets.only(left: 24.0),
                     child: ListTile(
                       leading: Icon(Icons.inventory),
                       title: Text('Inventario'),
@@ -755,7 +811,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(left: 24.0), // Sangría
+                    padding: const EdgeInsets.only(left: 24.0),
                     child: ListTile(
                       leading: Icon(Icons.person),
                       title: Text('Crear Usuarios'),
@@ -765,18 +821,24 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.only(left: 24.0), // Sangría
+                    padding: const EdgeInsets.only(left: 24.0),
                     child: ListTile(
                       leading: Icon(Icons.calculate),
                       title: Text('Conteo'),
                       onTap: () {
-                        // Navegar a la pantalla de conteo
-                        Get.to(
-                            ConteoPage()); // Asegúrate de crear esta pantalla
+                        Get.to(ConteoPage());
                       },
                     ),
                   ),
                 ],
+                if (rol == 'Empleado' && !_mostrarMenuAdmin)
+                  ListTile(
+                    leading: Icon(Icons.admin_panel_settings),
+                    title: Text('Acceso Admin'),
+                    onTap: () {
+                      _mostrarDialogoContrasena(context);
+                    },
+                  ),
                 ListTile(
                   leading: Icon(Icons.settings),
                   title: Text('Configuración'),

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:get/get.dart';
-import 'package:moonpv/screens/login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:moonpv/screens/login_screen.dart';
 
 class StoreScreen extends StatelessWidget {
   // Lista de productos de ejemplo
@@ -52,36 +51,44 @@ class StoreScreen extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Cerrar sesión'),
-          content: Text('¿Estás seguro de que deseas cerrar sesión?'),
+          title: const Text('Cerrar sesión'),
+          content: const Text('¿Estás seguro de que deseas cerrar sesión?'),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop(); // Cerrar el diálogo
               },
-              child: Text('Cancelar'),
+              child: const Text('Cancelar'),
             ),
             TextButton(
               onPressed: () async {
                 Navigator.of(context).pop(); // Cerrar el diálogo
                 try {
-                  await FirebaseAuth.instance
-                      .signOut(); // Cerrar sesión en Firebase
+                  await FirebaseAuth.instance.signOut(); // Cerrar sesión
 
-                  // Eliminar el estado de autenticación guardado en SharedPreferences
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('isLoggedIn');
-                  await prefs.remove('userId');
+                  // Eliminar estado de autenticación guardado
+                  try {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('isLoggedIn');
+                    await prefs.remove('userId');
+                  } catch (e) {
+                    print("Error al eliminar preferencias: $e");
+                  }
 
-                  Get.offAll(() =>
-                      LoginScreen()); // Navegar a la pantalla de inicio de sesión
+                  // Navegar a pantalla de login
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                    (Route<dynamic> route) => false,
+                  );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error al cerrar sesión: $e')),
                   );
                 }
               },
-              child: Text('Cerrar sesión', style: TextStyle(color: Colors.red)),
+              child: const Text('Cerrar sesión',
+                  style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -95,7 +102,6 @@ class StoreScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text("Catálogo de Tienda"),
         actions: [
-          // 🔥 Menú desplegable para carrito y logout
           PopupMenuButton<String>(
             icon: const Icon(Icons.shopping_cart),
             onSelected: (value) {
@@ -120,19 +126,22 @@ class StoreScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2, // Dos columnas
-          crossAxisSpacing: 10, // Espacio entre columnas
-          mainAxisSpacing: 10, // Espacio entre filas
-          childAspectRatio: 0.75, // Relación de aspecto de los elementos
+      body: SizedBox(
+        height: MediaQuery.of(context).size.height,
+        child: GridView.builder(
+          padding: const EdgeInsets.all(10),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 0.75,
+          ),
+          itemCount: products.length,
+          itemBuilder: (context, index) {
+            final product = products[index];
+            return ProductCard(product: product);
+          },
         ),
-        itemCount: products.length,
-        itemBuilder: (context, index) {
-          final product = products[index];
-          return ProductCard(product: product);
-        },
       ),
     );
   }
@@ -151,11 +160,16 @@ class ProductCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
+          SizedBox(
+            height: 120,
             child: Image.network(
               product["image"],
               fit: BoxFit.cover,
               width: double.infinity,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(Icons.image_not_supported,
+                    size: 50, color: Colors.grey);
+              },
             ),
           ),
           Padding(
@@ -220,6 +234,10 @@ class ProductDetailScreen extends StatelessWidget {
               width: double.infinity,
               height: 300,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(Icons.image_not_supported,
+                    size: 100, color: Colors.grey);
+              },
             ),
             const SizedBox(height: 20),
             Text(
@@ -239,7 +257,7 @@ class ProductDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text(
-              "Descripción del producto: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+              "Descripción del producto: Lorem ipsum dolor sit amet...",
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 20),

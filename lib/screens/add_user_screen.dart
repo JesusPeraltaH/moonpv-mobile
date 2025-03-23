@@ -18,7 +18,12 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
   String? _selectedRole;
 
   // Lista de roles
-  final List<String> _roles = ["Admin", "Dueño de Negocio", "Usuario Normal"];
+  final List<String> _roles = [
+    "Admin",
+    "Dueño de Negocio",
+    "Usuario Normal",
+    "Empleado"
+  ];
 
   // Lista de negocios (se llenará desde Firestore)
   List<String> _businesses = [];
@@ -91,9 +96,9 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                       onChanged: (value) {
                         setState(() {
                           _selectedRole = value;
-                          if (value == "Admin") {
-                            _selectedBusiness =
-                                null; // Limpiar negocio si el rol es Admin
+                          // Limpiar negocio si el rol es Admin o Empleado
+                          if (value == "Admin" || value == "Empleado") {
+                            _selectedBusiness = null;
                           }
                         });
                       },
@@ -105,7 +110,7 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                     SizedBox(height: 20),
 
                     // Dropdown para seleccionar el negocio (solo si el rol no es Admin)
-                    if (_selectedRole != "Admin")
+                    if (_selectedRole != "Admin" && _selectedRole != "Empleado")
                       DropdownButtonFormField<String>(
                         value: _selectedBusiness,
                         items: _businesses.map((business) {
@@ -124,7 +129,8 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
-                    if (_selectedRole != "Admin") SizedBox(height: 20),
+                    if (_selectedRole != "Admin" && _selectedRole != "Empleado")
+                      SizedBox(height: 20),
 
                     // Campo para el nombre
                     TextFormField(
@@ -190,7 +196,9 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
   // Función para guardar el usuario
   Future<void> _saveUser() async {
     if (_selectedRole == null ||
-        (_selectedRole != "Admin" && _selectedBusiness == null)) {
+        (_selectedRole != "Admin" &&
+            _selectedRole != "Empleado" &&
+            _selectedBusiness == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Por favor, completa todos los campos")),
       );
@@ -220,7 +228,9 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
       await _firestore.collection('users').doc(userCredential.user?.uid).set({
         "name": name,
         "email": email,
-        "business": _selectedBusiness,
+        "business": _selectedRole == "Admin" || _selectedRole == "Empleado"
+            ? null
+            : _selectedBusiness, // Negocio es null para Admin y Empleado
         "role": _selectedRole,
       });
 

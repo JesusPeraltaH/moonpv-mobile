@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
 import 'package:moonpv/screens/login_screen.dart';
+import 'package:moonpv/screens/splashScreen.dart';
 import 'firebase_options.dart'; // Asegúrate de importar esto
 
 void main() async {
@@ -25,7 +26,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: LoginScreen(),
+      home: SplashScreen(),
     );
   }
 }
