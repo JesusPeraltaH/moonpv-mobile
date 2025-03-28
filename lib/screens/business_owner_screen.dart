@@ -1,52 +1,457 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
-import 'package:moonpv/screens/login_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // For charts
+import 'dart:typed_data';
 
-class BusinessOwnerScreen extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:csv/csv.dart';
+import 'package:moonpv/model/sales_report_bottom_sheet.dart';
+import 'package:moonpv/screens/login_screen.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:io';
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
+
+class BusinessOwnerScreen extends StatefulWidget {
+  @override
+  _BusinessOwnerScreenState createState() => _BusinessOwnerScreenState();
+}
+
+class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
+  String businessName = '';
+  String businessId = '';
+  double totalSales = 0;
+  List<Map<String, dynamic>> topProducts = [];
+  List<Map<String, dynamic>> outOfStockProducts = [];
+  bool isLoading = true;
+  List<Map<String, dynamic>> _salesReportData = [];
+  DateTimeRange _selectedRange = DateTimeRange(
+    start: DateTime.now().subtract(Duration(days: 7)),
+    end: DateTime.now(),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBusinessData();
+  }
+
+  Future<void> _exportToPDF(String fileName) async {
+    if (_salesReportData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('No hay datos de ventas para generar el reporte')),
+      );
+      return;
+    }
+
+    try {
+      final pdf = pw.Document();
+      final total = _salesReportData.fold<double>(
+          0, (sum, item) => sum + (item['subtotal'] ?? 0));
+
+      pdf.addPage(
+        pw.Page(
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Header(text: 'Reporte de Ventas - $businessName'),
+                pw.Text(
+                    'Período: ${DateFormat('dd/MM/yyyy').format(_selectedRange.start)} - ${DateFormat('dd/MM/yyyy').format(_selectedRange.end)}'),
+                pw.SizedBox(height: 20),
+                pw.Table.fromTextArray(
+                  headers: [
+                    'Fecha',
+                    'Producto',
+                    'Cantidad',
+                    'P. Unitario',
+                    'Subtotal'
+                  ],
+                  data: _salesReportData
+                      .map((sale) => [
+                            sale['fecha'],
+                            sale['nombre'],
+                            sale['cantidad'].toString(),
+                            '\$${(sale['precio'] ?? 0).toStringAsFixed(2)}',
+                            '\$${(sale['subtotal'] ?? 0).toStringAsFixed(2)}',
+                          ])
+                      .toList(),
+                ),
+                pw.SizedBox(height: 20),
+                pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text(
+                    'TOTAL: \$${total.toStringAsFixed(2)}',
+                    style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      await _saveAndOpenPdf(await pdf.save(), fileName);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al generar PDF: $e')),
+      );
+    }
+  }
+
+  Future<void> _selectCustomRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now().subtract(Duration(days: 365)),
+      lastDate: DateTime.now(),
+      initialDateRange: _selectedRange,
+    );
+
+    if (picked != null) {
+      setState(() => _selectedRange = picked);
+    }
+  }
+
+  Future<void> _saveAndOpenPdf(Uint8List bytes, String fileName) async {
+    try {
+      // Obtener directorio temporal
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/$fileName.pdf');
+
+      // Guardar el archivo
+      await file.writeAsBytes(bytes);
+
+      // Abrir el archivo
+      await OpenFile.open(file.path);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al abrir el PDF: $e')),
+      );
+    }
+  }
+
+  Future<void> _loadBusinessData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (userDoc.exists) {
+        setState(() => businessName = userDoc['business'] ?? 'Mi Negocio');
+
+        final negociosQuery = await FirebaseFirestore.instance
+            .collection('negocios')
+            .where('nombreEmpresa', isEqualTo: businessName)
+            .limit(1)
+            .get();
+
+        if (negociosQuery.docs.isNotEmpty) {
+          setState(() => businessId = negociosQuery.docs.first.id);
+          await _fetchSalesData();
+          await _fetchInventoryData();
+        }
+      }
+    } catch (e) {
+      print('Error cargando datos: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  // Future<void> _fetchSalesData() async {
+  //   if (businessId.isEmpty) return;
+
+  //   final now = DateTime.now();
+  //   final thirtyDaysAgo = now.subtract(Duration(days: 30));
+
+  //   print('Buscando ventas para negocio: $businessId');
+  //   print('Rango de fechas: ${thirtyDaysAgo.toString()} a ${now.toString()}');
+
+  //   try {
+  //     final salesQuery = await FirebaseFirestore.instance
+  //         .collection('sales')
+  //         .where('fecha', isGreaterThanOrEqualTo: thirtyDaysAgo)
+  //         .get();
+
+  //     print('Total de documentos encontrados: ${salesQuery.docs.length}');
+
+  //     double total = 0;
+  //     Map<String, double> productCounts = {};
+  //     List<Map<String, dynamic>> allSoldProducts =
+  //         []; // Para almacenar todos los productos vendidos
+
+  //     for (var sale in salesQuery.docs) {
+  //       print('\nAnalizando documento de venta: ${sale.id}');
+  //       print('Contenido completo del documento: ${sale.data()}');
+
+  //       // Verificar si hay un campo 'grandTotal'
+  //       final grandTotal = sale['grandTotal'] ?? 0;
+  //       print('grandTotal encontrado: $grandTotal');
+  //       total += grandTotal;
+
+  //       // Obtener lista de productos
+  //       final productos = sale['productos'] as List<dynamic>? ?? [];
+  //       print('Número de productos en esta venta: ${productos.length}');
+
+  //       for (var producto in productos) {
+  //         if (producto is Map) {
+  //           print('Producto encontrado: $producto');
+
+  //           // Agregar a la lista de todos los productos vendidos
+  //           allSoldProducts.add({
+  //             'nombre': producto['nombre'] ?? 'Desconocido',
+  //             'cantidad': producto['cantidad'] ?? 0,
+  //             'precio': producto['precio'] ?? 0,
+  //             'negocioId': producto['negocioId'] ?? 'Sin ID',
+  //             'fechaVenta': sale['fecha']?.toDate().toString() ?? 'Sin fecha'
+  //           });
+
+  //           // Solo contar productos de este negocio
+  //           if (producto['negocioId'] == businessId) {
+  //             final productName = producto['nombre'] ?? 'Desconocido';
+  //             final quantity = producto['cantidad'] ?? 0;
+  //             productCounts.update(
+  //               productName,
+  //               (value) => value + quantity,
+  //               ifAbsent: () => quantity.toDouble(),
+  //             );
+  //           }
+  //         }
+  //       }
+  //     }
+
+  //     // Imprimir todos los productos vendidos en la consola
+  //     print('\n=== TODOS LOS PRODUCTOS VENDIDOS EN EL PERIODO ===');
+  //     allSoldProducts.forEach((product) {
+  //       print('Producto: ${product['nombre']}, '
+  //           'Cantidad: ${product['cantidad']}, '
+  //           'NegocioID: ${product['negocioId']}, '
+  //           'Fecha: ${product['fechaVenta']}');
+  //     });
+
+  //     // Obtener los 5 productos más vendidos
+  //     final sortedProducts = productCounts.entries.toList()
+  //       ..sort((a, b) => b.value.compareTo(a.value));
+
+  //     print('\nResumen de ventas:');
+  //     print('Total calculado: $total');
+  //     print('Productos más vendidos: $sortedProducts');
+
+  //     setState(() {
+  //       totalSales = total;
+  //       topProducts = sortedProducts
+  //           .take(5)
+  //           .map((e) => {'nombre': e.key, 'cantidad': e.value.toInt()})
+  //           .toList();
+  //     });
+  //   } catch (e) {
+  //     print('Error al obtener ventas: $e');
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Error al cargar datos de ventas: $e')),
+  //     );
+  //   }
+  // }
+
+  Future<void> _fetchSalesData() async {
+    if (businessId.isEmpty) return;
+
+    final now = DateTime.now();
+    final thirtyDaysAgo = now.subtract(Duration(days: 30));
+
+    try {
+      final salesQuery = await FirebaseFirestore.instance
+          .collection('sales')
+          .where('fecha', isGreaterThanOrEqualTo: thirtyDaysAgo)
+          .get();
+
+      double total = 0;
+      Map<String, double> productCounts = {};
+      List<Map<String, dynamic>> allSoldProducts = [];
+      Set<String> productIds = Set();
+
+      // Primero recolectamos todos los IDs de productos
+      for (var sale in salesQuery.docs) {
+        final productos = sale['productos'] as List<dynamic>? ?? [];
+
+        for (var producto in productos) {
+          if (producto is Map && producto['negocioId'] == businessId) {
+            final productId = producto['productoId']?.toString() ?? '';
+            if (productId.isNotEmpty) {
+              productIds.add(productId);
+            }
+          }
+        }
+      }
+
+      // Obtenemos todos los nombres de productos en una sola consulta
+      final productNames = await _getProductNames(productIds.toList());
+
+      // Procesamos las ventas con los nombres ya disponibles
+      for (var sale in salesQuery.docs) {
+        final productos = sale['productos'] as List<dynamic>? ?? [];
+        final saleDate = sale['fecha'].toDate();
+
+        for (var producto in productos) {
+          if (producto is Map && producto['negocioId'] == businessId) {
+            final productId = producto['productoId']?.toString() ?? '';
+            final productName =
+                productNames[productId] ?? 'Producto no encontrado';
+            final quantity = producto['cantidad'] ?? 0;
+            final price = producto['precioVenta'] ?? 0;
+            final subtotal = quantity * price;
+
+            allSoldProducts.add({
+              'fecha': DateFormat('dd/MM/yyyy').format(saleDate),
+              'productoId': productId,
+              'nombre': productName,
+              'cantidad': quantity,
+              'precio': price,
+              'subtotal': subtotal,
+            });
+
+            total += subtotal;
+            productCounts.update(
+              productName,
+              (value) => value + quantity,
+              ifAbsent: () => quantity.toDouble(),
+            );
+          }
+        }
+      }
+
+      // Obtener los 5 productos más vendidos
+      final sortedProducts = productCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      setState(() {
+        totalSales = total;
+        topProducts = sortedProducts
+            .take(5)
+            .map((e) => {'nombre': e.key, 'cantidad': e.value.toInt()})
+            .toList();
+        _salesReportData = allSoldProducts; // Ahora está definido
+      });
+    } catch (e) {
+      print('Error en _fetchSalesData: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al cargar datos de ventas: $e')),
+      );
+    }
+  }
+
+// Función para obtener múltiples nombres de productos
+  Future<Map<String, String>> _getProductNames(List<String> productIds) async {
+    final Map<String, String> productNames = {};
+
+    if (productIds.isEmpty) return productNames;
+
+    try {
+      // Consultar en lotes de 10 (límite de Firestore para whereIn)
+      for (var i = 0; i < productIds.length; i += 10) {
+        final batch = productIds.sublist(
+            i, i + 10 > productIds.length ? productIds.length : i + 10);
+
+        final query = await FirebaseFirestore.instance
+            .collection('productos')
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+
+        for (var doc in query.docs) {
+          productNames[doc.id] = doc['nombre'] ?? 'Producto sin nombre';
+        }
+      }
+    } catch (e) {
+      print('Error al obtener nombres de productos: $e');
+    }
+
+    return productNames;
+  }
+
+  Future<void> _fetchInventoryData() async {
+    if (businessId.isEmpty) return;
+
+    try {
+      final inventoryQuery = await FirebaseFirestore.instance
+          .collection('productos')
+          .where('negocioId', isEqualTo: businessId)
+          .where('cantidad', isEqualTo: 0)
+          .get();
+
+      setState(() {
+        outOfStockProducts = inventoryQuery.docs
+            .map((doc) => {
+                  'id': doc.id,
+                  'nombre': doc['nombre'] ?? 'Producto sin nombre',
+                  'cantidad': doc['cantidad'] ?? 0
+                })
+            .toList();
+      });
+    } catch (e) {
+      print('Error en _fetchInventoryData: $e');
+    }
+  }
+
+  void _showReportBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SalesReportBottomSheet(
+        businessName: businessName,
+        businessId: businessId,
+        salesData: _salesReportData,
+        initialDateRange: DateTimeRange(
+          start: DateTime.now().subtract(Duration(days: 30)),
+          end: DateTime.now(),
+        ),
+      ),
+    );
+  }
+
   void _logout(BuildContext context) async {
-    // Mostrar un diálogo de confirmación
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Cerrar sesión'),
-          content: Text('¿Estás seguro de que deseas cerrar sesión?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Cerrar el diálogo
-              },
-              child: Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop(); // Cerrar el diálogo
-                try {
-                  await FirebaseAuth.instance
-                      .signOut(); // Cerrar sesión en Firebase
-
-                  // Eliminar el estado de autenticación guardado en SharedPreferences
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('isLoggedIn');
-                  await prefs.remove('userId');
-
-                  Get.offAll(() =>
-                      LoginScreen()); // Navegar a la pantalla de inicio de sesión
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error al cerrar sesión: $e')),
-                  );
-                }
-              },
-              child: Text('Cerrar sesión', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
+      builder: (context) => AlertDialog(
+        title: Text('Cerrar sesión'),
+        content: Text('¿Estás seguro de que deseas cerrar sesión?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              try {
+                await FirebaseAuth.instance.signOut();
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove('isLoggedIn');
+                await prefs.remove('userId');
+                Get.offAll(() => LoginScreen());
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error al cerrar sesión: $e')),
+                );
+              }
+            },
+            child: Text('Cerrar sesión', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -54,151 +459,124 @@ class BusinessOwnerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Panel de Jefe de Negocio"),
+        title: Text("Panel de Negocio"),
         actions: [
-          // 🔥 Menú desplegable para carrito y logout
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.shopping_cart),
-            onSelected: (value) {
-              if (value == 'cart') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Carrito de compras")),
-                );
-              } else if (value == 'logout') {
-                _logout(context);
-              }
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'cart',
-                child: Text('Ver Carrito'),
-              ),
-              const PopupMenuItem<String>(
-                value: 'logout',
-                child: Text('Cerrar sesión'),
-              ),
-            ],
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: () => _logout(context),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildWelcomeMessage(),
-            SizedBox(height: 20),
-            _buildLineChart(),
-            SizedBox(height: 20),
-            _buildBusinessInfoCard(),
-          ],
-        ),
-      ),
-    );
-  }
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Bienvenido a",
+                      style: TextStyle(fontSize: 18, color: Colors.grey)),
+                  Text(businessName,
+                      style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue)),
+                  SizedBox(height: 30),
 
-  // Widget for the welcome message
-  Widget _buildWelcomeMessage() {
-    return Text(
-      "Bienvenido, Business Owner",
-      style: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
+                  // Resumen de ventas (ahora clickeable)
+                  GestureDetector(
+                    onTap: _showReportBottomSheet,
+                    child: Card(
+                      elevation: 3,
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text("Resumen de Ventas",
+                                    style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold)),
+                                Spacer(),
+                                Icon(Icons.arrow_drop_down, size: 24),
+                              ],
+                            ),
+                            SizedBox(height: 10),
+                            Text("\$${totalSales.toStringAsFixed(2)}",
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green)),
+                            SizedBox(height: 5),
+                            Text("Toca para generar reportes",
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 20),
 
-  // Widget for the line chart
-  Widget _buildLineChart() {
-    return Container(
-      height: 300,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.3),
-            spreadRadius: 2,
-            blurRadius: 5,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: LineChart(
-          LineChartData(
-            gridData: FlGridData(show: false),
-            titlesData: FlTitlesData(show: false),
-            borderData: FlBorderData(show: false),
-            minX: 0,
-            maxX: 6,
-            minY: 0,
-            maxY: 6,
-            lineBarsData: [
-              LineChartBarData(
-                spots: [
-                  FlSpot(0, 3),
-                  FlSpot(1, 1),
-                  FlSpot(2, 4),
-                  FlSpot(3, 2),
-                  FlSpot(4, 5),
-                  FlSpot(5, 1),
-                  FlSpot(6, 4),
+                  if (outOfStockProducts.isNotEmpty) ...[
+                    Card(
+                      elevation: 3,
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Productos Agotados",
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red)),
+                            SizedBox(height: 10),
+                            ...outOfStockProducts
+                                .map((product) => ListTile(
+                                      leading: Icon(Icons.warning,
+                                          color: Colors.orange),
+                                      title: Text(product['nombre']),
+                                      subtitle: Text(
+                                          "Cantidad: ${product['cantidad']}"),
+                                    ))
+                                .toList(),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                  ],
+
+                  Card(
+                    elevation: 3,
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Productos Más Vendidos",
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          SizedBox(height: 10),
+                          ...topProducts
+                              .map((product) => ListTile(
+                                    leading:
+                                        Icon(Icons.star, color: Colors.amber),
+                                    title: Text(product['nombre']),
+                                    subtitle: Text(
+                                        "Vendidos: ${product['cantidad']}"),
+                                  ))
+                              .toList(),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
-                isCurved: true,
-                dotData: FlDotData(show: false),
-                belowBarData: BarAreaData(show: false),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Widget for the business information card
-  Widget _buildBusinessInfoCard() {
-    return Card(
-      elevation: 3,
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Información del Negocio",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 10),
-            Text(
-              "Aquí puedes mostrar información relevante sobre tu negocio.",
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-            SizedBox(height: 20),
-            // Space to add more content
-            Container(
-              height: 100,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: Text(
-                  "Contenido adicional aquí",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

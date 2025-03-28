@@ -48,6 +48,13 @@ dependencies:
   mobile_scanner: ^6.0.7
   shared_preferences: ^2.5.2
   path_provider: ^2.1.5
+  intl: ^0.20.2
+  csv: ^6.0.0
+  pdf: ^3.8.4
+
+  file_picker: ^9.2.2
+  open_file: ^3.5.10
+  permission_handler: ^11.4.0
   #flutter_blue: ^0.8.0
   #blue_thermal_printer: ^1.2.3
   
@@ -61,7 +68,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^4.0.0
+  flutter_lints: ^5.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
