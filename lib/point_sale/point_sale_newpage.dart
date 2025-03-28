@@ -8,6 +8,7 @@ import 'package:moonpv/inventory/sales.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
+import 'package:moonpv/screens/payment_management_screen.dart';
 import 'package:moonpv/services/barcode_scanner_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
@@ -817,6 +818,16 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                       title: Text('Crear Usuarios'),
                       onTap: () {
                         Get.to(CreateUserScreen());
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24.0),
+                    child: ListTile(
+                      leading: Icon(Icons.person),
+                      title: Text('Pago Mensual'),
+                      onTap: () {
+                        Get.to(PaymentManagementScreen());
                       },
                     ),
                   ),
