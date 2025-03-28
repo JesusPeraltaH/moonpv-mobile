@@ -1,0 +1,2 @@
+C:/Users/david/Documents/jesusito/moonpv-mobile/android/app/.cxx/Debug/3ov572y1/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/david/Documents/jesusito/moonpv-mobile/android/app/.cxx/Debug/3ov572y1/armeabi-v7a/CMakeFiles/rebuild_cache.dir
