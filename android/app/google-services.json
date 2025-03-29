@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "904853707508-1s9jk62ungj9448bt9magq306ameo5k6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.moonpv",
+            "certificate_hash": "674aec9cbbfc637e3e1dba325f7c47e66eb1d488"
+          }
+        },
+        {
           "client_id": "904853707508-vl040a032hs2se64jr754prrttef6duc.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
