@@ -1009,23 +1009,23 @@ class _InventoryPageState extends State<InventoryPage> {
                         labelText: 'Código',
                         suffixIcon: IconButton(
                           icon: Icon(Icons.camera_alt),
-                          onPressed: () async {
-                            final String? barcode =
-                                await Navigator.push<String>(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => BarcodeScannerPage(
-                                  onScan: (barcode) {
-                                    productController['codigo']?.text = barcode;
-                                  },
-                                ),
-                              ),
-                            );
+                       onPressed: () async {
+  // Abre la cámara para escanear el código de barras y pasa el nombre de la pantalla actual
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => BarcodeScannerPage(previousRoute: 'productos'), // Cambia según la pantalla
+    ),
+  );
 
-                            if (barcode != null) {
-                              productController['codigo']?.text = barcode;
-                            }
-                          },
+  if (result != null && result['barcode'] != null) {
+    String scannedBarcode = result['barcode'];
+
+    // Asigna el código escaneado al campo de texto del producto
+    productController['codigo']?.text = scannedBarcode;
+  }
+}
+
                         ),
                       ),
                     ),

@@ -5,17 +5,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:csv/csv.dart';
 import 'package:moonpv/model/sales_report_bottom_sheet.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:file_picker/file_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
-import 'dart:convert';
+
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -42,6 +38,8 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
     super.initState();
     _loadBusinessData();
   }
+
+
 
   Future<void> _exportToPDF(String fileName) async {
     if (_salesReportData.isEmpty) {
@@ -110,7 +108,7 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
     }
   }
 
-  Future<void> _selectCustomRange() async {
+Future<void> _selectCustomRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime.now().subtract(Duration(days: 365)),
@@ -119,7 +117,11 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
     );
 
     if (picked != null) {
-      setState(() => _selectedRange = picked);
+      setState(() {
+        _selectedRange = picked;
+        // Después de seleccionar el rango, actualizamos los datos de ventas
+        _fetchSalesData(); // Actualiza los datos de ventas basados en el nuevo rango
+      });
     }
   }
 
@@ -173,99 +175,6 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
     }
   }
 
-  // Future<void> _fetchSalesData() async {
-  //   if (businessId.isEmpty) return;
-
-  //   final now = DateTime.now();
-  //   final thirtyDaysAgo = now.subtract(Duration(days: 30));
-
-  //   print('Buscando ventas para negocio: $businessId');
-  //   print('Rango de fechas: ${thirtyDaysAgo.toString()} a ${now.toString()}');
-
-  //   try {
-  //     final salesQuery = await FirebaseFirestore.instance
-  //         .collection('sales')
-  //         .where('fecha', isGreaterThanOrEqualTo: thirtyDaysAgo)
-  //         .get();
-
-  //     print('Total de documentos encontrados: ${salesQuery.docs.length}');
-
-  //     double total = 0;
-  //     Map<String, double> productCounts = {};
-  //     List<Map<String, dynamic>> allSoldProducts =
-  //         []; // Para almacenar todos los productos vendidos
-
-  //     for (var sale in salesQuery.docs) {
-  //       print('\nAnalizando documento de venta: ${sale.id}');
-  //       print('Contenido completo del documento: ${sale.data()}');
-
-  //       // Verificar si hay un campo 'grandTotal'
-  //       final grandTotal = sale['grandTotal'] ?? 0;
-  //       print('grandTotal encontrado: $grandTotal');
-  //       total += grandTotal;
-
-  //       // Obtener lista de productos
-  //       final productos = sale['productos'] as List<dynamic>? ?? [];
-  //       print('Número de productos en esta venta: ${productos.length}');
-
-  //       for (var producto in productos) {
-  //         if (producto is Map) {
-  //           print('Producto encontrado: $producto');
-
-  //           // Agregar a la lista de todos los productos vendidos
-  //           allSoldProducts.add({
-  //             'nombre': producto['nombre'] ?? 'Desconocido',
-  //             'cantidad': producto['cantidad'] ?? 0,
-  //             'precio': producto['precio'] ?? 0,
-  //             'negocioId': producto['negocioId'] ?? 'Sin ID',
-  //             'fechaVenta': sale['fecha']?.toDate().toString() ?? 'Sin fecha'
-  //           });
-
-  //           // Solo contar productos de este negocio
-  //           if (producto['negocioId'] == businessId) {
-  //             final productName = producto['nombre'] ?? 'Desconocido';
-  //             final quantity = producto['cantidad'] ?? 0;
-  //             productCounts.update(
-  //               productName,
-  //               (value) => value + quantity,
-  //               ifAbsent: () => quantity.toDouble(),
-  //             );
-  //           }
-  //         }
-  //       }
-  //     }
-
-  //     // Imprimir todos los productos vendidos en la consola
-  //     print('\n=== TODOS LOS PRODUCTOS VENDIDOS EN EL PERIODO ===');
-  //     allSoldProducts.forEach((product) {
-  //       print('Producto: ${product['nombre']}, '
-  //           'Cantidad: ${product['cantidad']}, '
-  //           'NegocioID: ${product['negocioId']}, '
-  //           'Fecha: ${product['fechaVenta']}');
-  //     });
-
-  //     // Obtener los 5 productos más vendidos
-  //     final sortedProducts = productCounts.entries.toList()
-  //       ..sort((a, b) => b.value.compareTo(a.value));
-
-  //     print('\nResumen de ventas:');
-  //     print('Total calculado: $total');
-  //     print('Productos más vendidos: $sortedProducts');
-
-  //     setState(() {
-  //       totalSales = total;
-  //       topProducts = sortedProducts
-  //           .take(5)
-  //           .map((e) => {'nombre': e.key, 'cantidad': e.value.toInt()})
-  //           .toList();
-  //     });
-  //   } catch (e) {
-  //     print('Error al obtener ventas: $e');
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(content: Text('Error al cargar datos de ventas: $e')),
-  //     );
-  //   }
-  // }
 
   Future<void> _fetchSalesData() async {
     if (businessId.isEmpty) return;
@@ -421,6 +330,9 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
       ),
     );
   }
+
+ 
+
 
   void _logout(BuildContext context) async {
     showDialog(

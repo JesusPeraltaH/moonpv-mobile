@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class BarcodeScannerPage extends StatefulWidget {
-  final Function(String) onScan; // Función para devolver el código escaneado
+  final String previousRoute; // Ruta de la pantalla anterior
 
-  const BarcodeScannerPage({Key? key, required this.onScan}) : super(key: key);
+  const BarcodeScannerPage({Key? key, required this.previousRoute}) : super(key: key);
 
   @override
   _BarcodeScannerPageState createState() => _BarcodeScannerPageState();
@@ -40,10 +40,8 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             onDetect: (capture) {
               final List<Barcode> barcodes = capture.barcodes;
               if (barcodes.isNotEmpty) {
-                final String barcode = barcodes.first.rawValue ??
-                    ""; // Obtener el valor del código
-                widget.onScan(barcode); // Devolver el código escaneado
-                Navigator.pop(context); // Cerrar la página de escaneo
+                final String barcode = barcodes.first.rawValue ?? "";
+                Navigator.pop(context, {'barcode': barcode, 'previousRoute': widget.previousRoute});
               }
             },
           ),
@@ -61,7 +59,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             right: 20,
             child: IconButton(
               icon: Icon(Icons.close, color: Colors.white, size: 30),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, null), // Cerrar sin datos
             ),
           ),
         ],
@@ -74,7 +72,7 @@ class BarcodeOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Paint paint = Paint()
-      ..color = Colors.white.withOpacity(0.5) // Borde semitransparente
+      ..color = Colors.white.withOpacity(0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4;
 

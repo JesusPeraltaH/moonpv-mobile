@@ -351,8 +351,6 @@ void _addToCart(DocumentSnapshot product) {
   setState(() {});
 }
 
-
-
   Stream<QuerySnapshot> _getFilteredProducts() {
     Query query = _firestore.collection('productos');
 
@@ -372,48 +370,53 @@ void _addToCart(DocumentSnapshot product) {
     return query.snapshots();
   }
 
-  Widget _buildProductCard(DocumentSnapshot product) {
-  final productData = product.data() as Map<String, dynamic>;
+    Widget _buildProductCard(DocumentSnapshot product) {
+    final productData = product.data() as Map<String, dynamic>;
   
-  return Card(
-    elevation: 2,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Imagen del producto
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-            child: Image.network(
-              productData['imagen'],
-              fit: BoxFit.cover,
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Imagen del producto con loader
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+              child: CachedNetworkImage(
+                imageUrl: productData['imagen'],
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Center(
+                  child: CircularProgressIndicator(),
+                ),
+                errorWidget: (context, url, error) => Icon(Icons.error),
+              ),
             ),
           ),
-        ),
-        // Información del producto
-        Padding(
-          padding: EdgeInsets.all(8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                productData['nombre'],
-                style: TextStyle(fontWeight: FontWeight.bold),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                '\$${productData['precio'].toStringAsFixed(2)}',
-                style: TextStyle(color: Colors.green),
-              ),
-            ],
+          // Información del producto
+          Padding(
+            padding: EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  productData['nombre'],
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '\$${productData['precio'].toStringAsFixed(2)}',
+                  style: TextStyle(color: Colors.green),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
+
 
 void _showProductDetails(DocumentSnapshot product) {
     final data = product.data() as Map<String, dynamic>;

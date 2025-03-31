@@ -903,27 +903,25 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                       suffixIcon: IconButton(
                         icon: Icon(Icons.camera_alt),
                         onPressed: () async {
-                          // Abre la cámara para escanear el código de barras
-                          final String? barcode = await Navigator.push<String>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => BarcodeScannerPage(
-                                onScan: (barcode) {
-                                  // Asigna el código escaneado al campo de texto
-                                  _codeController.text = barcode;
-                                  // Llama a la función para buscar el producto por el código
-                                  _searchProductByCode(barcode);
-                                },
-                              ),
-                            ),
-                          );
+  // Abre la cámara para escanear el código de barras y pasa el nombre de la pantalla actual
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => BarcodeScannerPage(previousRoute: 'ventas'), // Cambia según la pantalla
+    ),
+  );
 
-                          if (barcode != null) {
-                            _codeController.text = barcode;
-                            _searchProductByCode(
-                                barcode); // Llama a la búsqueda con el código
-                          }
-                        },
+  if (result != null && result['barcode'] != null) {
+    String scannedBarcode = result['barcode'];
+
+    // Asigna el código escaneado al campo de texto
+    _codeController.text = scannedBarcode;
+    
+    // Llama a la función para buscar el producto por el código
+    _searchProductByCode(scannedBarcode);
+  }
+}
+
                       ),
                     ),
                     keyboardType: TextInputType.number,

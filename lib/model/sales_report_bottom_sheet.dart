@@ -32,25 +32,34 @@ class _SalesReportBottomSheetState extends State<SalesReportBottomSheet> {
   late DateTimeRange _selectedRange;
   bool _isGenerating = false;
   String _selectedFormat = 'PDF';
+   late String _selectedPeriod;
+  final Map<String, Duration> _predefinedPeriods = {
+    'Últimos 7 días': Duration(days: 7),
+    'Últimos 14 días': Duration(days: 14),
+    'Últimos 30 días': Duration(days: 30),
+    'Últimos 60 días': Duration(days: 60),
+    'Personalizado': Duration.zero,
+  };
 
   @override
   void initState() {
     super.initState();
     _selectedRange = widget.initialDateRange;
+     _selectedPeriod = 'Personalizado';
   }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.all(20),
-      height: MediaQuery.of(context).size.height * 0.7,
+      height: MediaQuery.of(context).size.height * 0.6,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(),
-          Divider(),
+          Text('Seleccionar Período:',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           SizedBox(height: 10),
-          _buildPeriodSelector(),
+          ..._buildPeriodOptions(),
           SizedBox(height: 10),
           _buildFormatSelector(),
           SizedBox(height: 10),
@@ -74,37 +83,49 @@ class _SalesReportBottomSheetState extends State<SalesReportBottomSheet> {
     );
   }
 
-  Widget _buildPeriodSelector() {
+
+
+  List<Widget> _buildPeriodOptions() {
     final format = DateFormat('dd/MM/yyyy');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Seleccionar Período:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        SizedBox(height: 10),
-        ..._buildPeriodOptions(format),
-      ],
-    );
+    return _predefinedPeriods.keys.map((title) {
+      return ListTile(
+        title: Text(title == 'Personalizado'
+            ? 'Personalizado: ${format.format(_selectedRange.start)} - ${format.format(_selectedRange.end)}'
+            : title),
+        leading: Radio<String>(
+          value: title,
+          groupValue: _selectedPeriod,
+          onChanged: (value) async {
+            if (value == 'Personalizado') {
+              await _selectCustomRange();
+            } else {
+              setState(() {
+                _selectedPeriod = value!;
+                _selectedRange = DateTimeRange(
+                  start: DateTime.now().subtract(_predefinedPeriods[value]! ?? Duration.zero),
+                  end: DateTime.now(),
+                );
+              });
+            }
+          },
+        ),
+        onTap: () async {
+          if (title == 'Personalizado') {
+            await _selectCustomRange();
+          } else {
+            setState(() {
+              _selectedPeriod = title;
+              _selectedRange = DateTimeRange(
+                start: DateTime.now().subtract(_predefinedPeriods[title]! ?? Duration.zero),
+                end: DateTime.now(),
+              );
+            });
+          }
+        },
+      );
+    }).toList();
   }
 
-  List<Widget> _buildPeriodOptions(DateFormat format) {
-    return [
-      _buildPeriodOption('Últimos 7 días', Duration(days: 7)),
-      _buildPeriodOption('Últimos 14 días', Duration(days: 14)),
-      _buildPeriodOption('Últimos 30 días', Duration(days: 30)),
-      _buildPeriodOption('Últimos 60 días', Duration(days: 60)),
-      ListTile(
-        title: Text(
-            'Personalizado: ${format.format(_selectedRange.start)} - ${format.format(_selectedRange.end)}'),
-        leading: Radio<DateTimeRange>(
-          value: _selectedRange,
-          groupValue: _selectedRange,
-          onChanged: (value) => _selectCustomRange(),
-        ),
-        onTap: _selectCustomRange,
-      ),
-    ];
-  }
 
   Widget _buildPeriodOption(String title, Duration duration) {
     return ListTile(
@@ -187,13 +208,14 @@ class _SalesReportBottomSheetState extends State<SalesReportBottomSheet> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
+                  color: Colors.white,
                 ),
               ),
       ),
     );
   }
 
-  Future<void> _selectCustomRange() async {
+Future<void> _selectCustomRange() async {
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime.now().subtract(Duration(days: 365)),
@@ -202,7 +224,10 @@ class _SalesReportBottomSheetState extends State<SalesReportBottomSheet> {
     );
 
     if (picked != null) {
-      setState(() => _selectedRange = picked);
+      setState(() {
+        _selectedRange = picked;
+        _selectedPeriod = 'Personalizado';
+      });
     }
   }
 
