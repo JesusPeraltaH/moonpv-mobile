@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:moonpv/screens/splashScreen.dart';
+import 'package:moonpv/theme/zara_theme.dart';
 import 'firebase_options.dart'; // Asegúrate de importar esto
 
 void main() async {
@@ -21,11 +22,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      title: 'Moon PV',
+      title: 'MoonConcept Store',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+       theme: ZaraTheme.lightTheme,
+      darkTheme: ZaraTheme.darkTheme,
       home: SplashScreen(),
     );
   }

@@ -780,7 +780,7 @@ class _InventoryPageState extends State<InventoryPage> {
           children: <Widget>[
             DrawerHeader(
               decoration: BoxDecoration(
-                color: Colors.blue,
+                color: Colors.black,
               ),
               child: Text(
                 'Menú de Navegación',
@@ -868,7 +868,7 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
           if (isPortrait) // Mostrar barra inferior solo en modo vertical
             Container(
-              color: Colors.purple,
+              color: Colors.black,
               padding: EdgeInsets.symmetric(vertical: 8.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -919,9 +919,20 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _buildBusinessForm() {
     return SingleChildScrollView(
+      
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        
         children: [
+          Text(
+  'Crear Negocio',
+  style: TextStyle(
+    fontSize: 24,
+    fontWeight: FontWeight.w600,
+    color: Theme.of(context).colorScheme.onBackground,
+  ),
+),
+          SizedBox(height: 50,),
           Text('Logo (Opcional)'),
           SizedBox(height: 8.0),
           GestureDetector(
@@ -940,20 +951,27 @@ class _InventoryPageState extends State<InventoryPage> {
             controller: _companyNameController,
             decoration: InputDecoration(labelText: 'Nombre del negocio'),
           ),
+          SizedBox(height: 8.0),
           TextField(
             controller: _ownerNameController,
             decoration: InputDecoration(labelText: 'Nombre del dueño'),
           ),
+          SizedBox(height: 8.0),
           TextField(
             controller: _phoneController,
             decoration: InputDecoration(labelText: 'Teléfono'),
             keyboardType: TextInputType.phone,
           ),
+          
           SizedBox(height: 16.0),
-          ElevatedButton(
-            onPressed: _addBusiness,
-            child: Text('Guardar Negocio'),
-          ),
+          SizedBox(
+  width: double.infinity,
+  child: ElevatedButton(
+    onPressed: _addBusiness,
+    child: Text('Guardar Negocio'),
+  ),
+),
+
         ],
       ),
     );
@@ -962,7 +980,16 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildProductForm() {
     return SingleChildScrollView(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+  'Agregar Productos',
+  style: TextStyle(
+    fontSize: 24,
+    fontWeight: FontWeight.w600,
+    color: Theme.of(context).colorScheme.onBackground,
+  ),
+),
           StreamBuilder<List<Map<String, dynamic>>>(
             stream: _getBusinesses(),
             builder: (context, snapshot) {
@@ -1061,11 +1088,14 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             );
           }).toList(),
-          ElevatedButton(
-            onPressed: _saveCurrentProduct,
-            child: Text(editingIndex == null
-                ? 'Agregar otro producto'
-                : 'Actualizar producto'),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saveCurrentProduct,
+              child: Text(editingIndex == null
+                  ? 'Agregar otro producto'
+                  : 'Actualizar producto'),
+            ),
           ),
           SizedBox(height: 16.0),
           _buildProductTable(),
@@ -1095,7 +1125,9 @@ class _InventoryPageState extends State<InventoryPage> {
               // Si todo está correcto, guardar los productos
               _addProducts(selectedBusinessId!);
             },
-            child: Text('Guardar Productos'),
+            child: SizedBox(
+              width: double.infinity,
+              child: Center(child: Text('Guardar Productos'))),
           ),
         ],
       ),
@@ -1161,31 +1193,136 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // Método para construir la lista de negocios
   Widget _buildBusinessList() {
-    bool isPortrait =
-        MediaQuery.of(context).orientation == Orientation.portrait;
+  bool isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _getBusinesses(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData) {
-          return Center(child: CircularProgressIndicator());
-        }
+  return StreamBuilder<QuerySnapshot>(
+    stream: FirebaseFirestore.instance.collection('negocios').snapshots(),
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return Center(child: Text('Error: ${snapshot.error}'));
+      }
+      if (!snapshot.hasData) {
+        return Center(child: CircularProgressIndicator());
+      }
 
-        List<Map<String, dynamic>> businesses = snapshot.data!;
+      List<Map<String, dynamic>> businesses = snapshot.data!.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        return data;
+      }).toList();
 
-        // Si es modo vertical, mostramos una lista de negocios
-        if (isPortrait) {
-          return ListView.builder(
-            itemCount: businesses.length,
-            itemBuilder: (context, index) {
-              final business = businesses[index];
-              return Card(
-                margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                child: ListTile(
-                  leading: business['logo'] != null
+      if (isPortrait) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 5.0),
+              child: Text(
+                'Listado de Negocios',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: businesses.length,
+                itemBuilder: (context, index) {
+                  final business = businesses[index];
+                  return Dismissible(
+                    key: Key(business['id']),
+                    direction: DismissDirection.endToStart,
+                    confirmDismiss: (direction) async {
+                      String input = '';
+                      return await showDialog(
+                        context: context,
+                        builder: (context) {
+                          return AlertDialog(
+                            title: Text('¿Eliminar negocio?'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Para confirmar, escribe el nombre completo del dueño:'),
+                                SizedBox(height: 10),
+                                TextField(
+                                  onChanged: (value) => input = value,
+                                  decoration: InputDecoration(
+                                    border: OutlineInputBorder(),
+                                    hintText: 'Nombre del dueño',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: Text('Cancelar'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  if (input.trim().toLowerCase() == business['nombreDueno'].toString().trim().toLowerCase()) {
+                                    _deleteBusiness(business['id']);
+                                    Navigator.of(context).pop(true);
+                                  }
+                                },
+                                child: Text('Eliminar'),
+                              )
+                            ],
+                          );
+                        },
+                      );
+                    },
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      color: Colors.red,
+                      child: Icon(Icons.delete, color: Colors.white),
+                    ),
+                    child: Card(
+                      margin: EdgeInsets.symmetric(vertical: 2.0, horizontal: 4.0),
+                      child: ListTile(
+                        leading: business['logo'] != null
+                            ? Image.network(
+                                business['logo'],
+                                height: 50,
+                                width: 50,
+                                fit: BoxFit.cover,
+                              )
+                            : Icon(Icons.business, size: 50),
+                        title: Text(business['nombreEmpresa']),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Dueño: ${business['nombreDueno']}'),
+                            Text('Teléfono: ${business['telefono']}'),
+                          ],
+                        ),
+                        onTap: () async {
+                          final products = await _fetchProductsForBusiness(business['id']);
+                          _showProductsDialog(products);
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      }
+
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columns: [
+            DataColumn(label: Text('Logo')),
+            DataColumn(label: Text('Nombre Empresa')),
+            DataColumn(label: Text('Dueño')),
+            DataColumn(label: Text('Teléfono')),
+          ],
+          rows: businesses.map((business) {
+            return DataRow(
+              cells: [
+                DataCell(
+                  business['logo'] != null
                       ? Image.network(
                           business['logo'],
                           height: 50,
@@ -1193,68 +1330,37 @@ class _InventoryPageState extends State<InventoryPage> {
                           fit: BoxFit.cover,
                         )
                       : Icon(Icons.business, size: 50),
-                  title: Text(business['nombreEmpresa']),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Dueño: ${business['nombreDueno']}'),
-                      Text('Teléfono: ${business['telefono']}'),
-                    ],
-                  ),
-                  onTap: () async {
-                    // Obtener los productos del negocio seleccionado
-                    final products =
-                        await _fetchProductsForBusiness(business['id']);
-                    _showProductsDialog(
-                        products); // Mostrar productos en un diálogo
-                  },
                 ),
-              );
-            },
-          );
-        }
+                DataCell(Text(business['nombreEmpresa'])),
+                DataCell(Text(business['nombreDueno'])),
+                DataCell(Text(business['telefono'])),
+              ],
+              onSelectChanged: (selected) async {
+                final products = await _fetchProductsForBusiness(business['id']);
+                _showProductsDialog(products);
+              },
+            );
+          }).toList(),
+        ),
+      );
+    },
+  );
+}
 
-        // Si es modo horizontal, mostramos una tabla de negocios
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Logo')),
-              DataColumn(label: Text('Nombre Empresa')),
-              DataColumn(label: Text('Dueño')),
-              DataColumn(label: Text('Teléfono')),
-            ],
-            rows: businesses.map((business) {
-              return DataRow(
-                cells: [
-                  DataCell(
-                    business['logo'] != null
-                        ? Image.network(
-                            business['logo'],
-                            height: 50,
-                            width: 50,
-                            fit: BoxFit.cover,
-                          )
-                        : Icon(Icons.business, size: 50),
-                  ),
-                  DataCell(Text(business['nombreEmpresa'])),
-                  DataCell(Text(business['nombreDueno'])),
-                  DataCell(Text(business['telefono'])),
-                ],
-                onSelectChanged: (selected) async {
-                  // Obtener los productos del negocio seleccionado
-                  final products =
-                      await _fetchProductsForBusiness(business['id']);
-                  _showProductsDialog(
-                      products); // Mostrar productos en un diálogo
-                },
-              );
-            }).toList(),
-          ),
-        );
-      },
+Future<void> _deleteBusiness(String id) async {
+  try {
+    await FirebaseFirestore.instance.collection('negocios').doc(id).delete();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Negocio eliminado exitosamente')),
+    );
+  } catch (e) {
+    print('Error al eliminar negocio: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error al eliminar negocio')),
     );
   }
+}
+
 
   // Método para mostrar los productos del negocio seleccionado
   Widget _buildProductsForBusiness() {

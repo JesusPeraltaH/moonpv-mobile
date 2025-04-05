@@ -837,7 +837,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                       leading: Icon(Icons.calculate),
                       title: Text('Conteo'),
                       onTap: () {
-                        Get.to(ConteoPage());
+                        Get.to(ConteoNegociosScreen(negociosSeleccionados: [],));
                       },
                     ),
                   ),

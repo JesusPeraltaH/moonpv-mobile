@@ -25,40 +25,54 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true; // Control de visibilidad de la contraseña
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Login")),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            TextField(
-              controller: _emailController,
-              decoration: InputDecoration(labelText: "Correo"),
-              keyboardType: TextInputType.emailAddress,
+Widget build(BuildContext context) {
+  // Determinar el color de los íconos según el tema
+  Color iconColor = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
+
+  return Scaffold(
+    appBar: AppBar(
+      title: Text("Login", style: TextStyle(color: Colors.white)),
+      backgroundColor: Theme.of(context).colorScheme.primary,
+    ),
+    body: Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TextField(
+            controller: _emailController,
+            decoration: InputDecoration(
+              labelText: "Correo",
+              prefixIcon: Icon(Icons.email, color: iconColor),  // Cambiar color del ícono
             ),
-            SizedBox(height: 20),
-            TextField(
-              controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: "Contraseña",
-                border: OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscurePassword = !_obscurePassword;
-                    });
-                  },
+            keyboardType: TextInputType.emailAddress,
+            style: TextStyle(color: iconColor),
+          ),
+          SizedBox(height: 20),
+          TextField(
+            controller: _passwordController,
+            decoration: InputDecoration(
+              labelText: "Contraseña",
+              prefixIcon: Icon(Icons.lock, color: iconColor),  // Cambiar color del ícono
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                  color: iconColor,  // Cambiar color del ícono
                 ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
               ),
-              obscureText: _obscurePassword,
             ),
-            SizedBox(height: 20),
-            ElevatedButton(
+            obscureText: _obscurePassword,
+            style: TextStyle(color: iconColor),
+          ),
+          SizedBox(height: 30),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
               onPressed: _isLoading ? null : () async {
                 setState(() => _isLoading = true);
                 await _login(context);
@@ -68,21 +82,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? CircularProgressIndicator(color: Colors.white)
                   : Text("Iniciar Sesión"),
             ),
-            SizedBox(height: 20),
-            ElevatedButton(
+          ),
+          SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
               onPressed: _isLoading ? null : () async {
                 setState(() => _isLoading = true);
                 await _loginWithGoogle();
                 setState(() => _isLoading = false);
               },
               style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.black,
                 backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
               ),
               child: _isLoading
                   ? CircularProgressIndicator()
                   : Row(
                       mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Image.asset(
                           AppImages.google,
@@ -93,11 +112,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Future<void> _login(BuildContext context) async {
     final String email = _emailController.text.trim();

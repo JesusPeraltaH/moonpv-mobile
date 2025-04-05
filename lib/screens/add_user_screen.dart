@@ -179,10 +179,16 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                     SizedBox(height: 20),
 
                     // Botón para guardar el usuario
-                    ElevatedButton(
-                      onPressed: _saveUser,
-                      child: Text("Guardar Usuario"),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _saveUser,
+                        child: Text("Guardar Usuario"),
+                      ),
                     ),
+                    SizedBox(
+                      height: 30,
+                    )
                   ],
                 ),
               ),
@@ -260,37 +266,98 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Crear Usuario"),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context); // Volver atrás
-          },
-        ),
+  return Scaffold(
+    appBar: AppBar(
+      title: Text("Crear Usuario"),
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back),
+        onPressed: () {
+          Navigator.pop(context); // Volver atrás
+        },
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore.collection('users').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
-          }
+    ),
+    body: StreamBuilder<QuerySnapshot>(
+      stream: _firestore.collection('users').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text("No hay usuarios registrados"));
-          }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(child: Text("No hay usuarios registrados"));
+        }
 
-          final users = snapshot.data!.docs;
+        final users = snapshot.data!.docs;
 
-          return ListView.builder(
-            itemCount: users.length,
-            itemBuilder: (context, index) {
-              final user = users[index].data() as Map<String, dynamic>;
-              return ListTile(
+        return ListView.builder(
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+            final userDoc = users[index];
+            final user = userDoc.data() as Map<String, dynamic>;
+            final String userId = userDoc.id;
+
+            return Dismissible(
+              key: Key(userId),
+              direction: DismissDirection.endToStart,
+              confirmDismiss: (direction) async {
+                final controller = TextEditingController();
+                bool confirm = false;
+
+                await showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text("Eliminar usuario"),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text("Para eliminar este usuario, escribe su nombre completo: ${user["name"]}"),
+                        SizedBox(height: 8),
+                        TextField(
+                          controller: controller,
+                          decoration: InputDecoration(labelText: "Nombre completo"),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text("Cancelar"),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          if (controller.text.trim() == user["name"]) {
+                            confirm = true;
+                            Navigator.of(context).pop();
+                          }
+                        },
+                        child: Text("Eliminar"),
+                      ),
+                    ],
+                  ),
+                );
+
+                return confirm;
+              },
+              onDismissed: (direction) async {
+                await _firestore.collection("users").doc(userId).delete();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Usuario eliminado correctamente")),
+                );
+              },
+              background: Container(
+                color: Colors.red,
+                alignment: Alignment.centerLeft,
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Icon(Icons.delete, color: Colors.white),
+              ),
+              child: ListTile(
+                leading: user["logo"] != null
+                    ? CircleAvatar(
+                        backgroundImage: NetworkImage(user["logo"]),
+                      )
+                    : Icon(Icons.business),
                 title: Text(
-                  user["business"] ??
-                      "Admin", // Muestra "Admin" si no hay negocio
+                  user["business"] ?? "Admin",
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -303,16 +370,18 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                     color: Colors.grey[600],
                   ),
                 ),
-              );
-            },
-          );
-        },
-      ),
-      // Botón flotante para abrir el Bottom Sheet
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddUserBottomSheet,
-        child: Icon(Icons.add),
-      ),
-    );
-  }
+              ),
+            );
+          },
+        );
+      },
+    ),
+    floatingActionButton: FloatingActionButton(
+      onPressed: _showAddUserBottomSheet,
+      child: Icon(Icons.add),
+    ),
+  );
+}
+
+
 }
