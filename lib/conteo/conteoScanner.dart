@@ -4,18 +4,35 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:moonpv/conteo/scannerCodigo.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ConteoEscaneoScreen extends StatefulWidget {
-  final List<String> negociosSeleccionados; 
+  final List<String> negociosSeleccionados;
   // Lista de IDs de negocios seleccionados
   final String csvPath;
+  final String nombreConteo;
+  final List<Map<String, dynamic>> productosContados;
+  final String? conteoPausadoId;
+  final String? csvUrl;
 
-  const ConteoEscaneoScreen({required this.negociosSeleccionados, required this.csvPath});
+  const ConteoEscaneoScreen(
+      {Key? key,
+      required this.negociosSeleccionados,
+      required this.csvPath,
+      required this.nombreConteo,
+      required this.productosContados,
+      this.conteoPausadoId,
+      this.csvUrl})
+      : super(key: key);
 
   @override
   _ConteoEscaneoScreenState createState() => _ConteoEscaneoScreenState();
@@ -25,26 +42,35 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   List<Map<String, dynamic>> productos = [];
   TextEditingController cantidadController = TextEditingController();
-String codigoEscaneado = '';
+  String codigoEscaneado = '';
   bool scanning = true;
-   bool isCsvLoaded = false;
+  bool isCsvLoaded = false;
   bool isLoading = true;
   bool isBottomSheetOpen = false; // Nuevo estado para controlar el bottom sheet
   MobileScannerController cameraController = MobileScannerController();
   String _nombreArchivo = '';
-String _mesSeleccionado = 'Enero';
-final List<String> _meses = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-];
-
+  String _mesSeleccionado = 'Enero';
+  final List<String> _meses = [
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre'
+  ];
 
   @override
   void initState() {
     super.initState();
     // Cargar productos de los negocios seleccionados
     _loadProductos();
-     _initializeData();
+    _initializeData();
     _loadCsvData().then((_) {
       setState(() {
         isLoading = false;
@@ -64,7 +90,7 @@ final List<String> _meses = [
         _loadProductos(),
         _loadCsvData(),
       ]);
-      
+
       setState(() {
         isLoading = false;
         isCsvLoaded = true;
@@ -80,11 +106,12 @@ final List<String> _meses = [
   }
 
   // Cargar los productos de los negocios seleccionados
-    Future<void> _loadProductos() async {
+  Future<void> _loadProductos() async {
     for (var negocioId in widget.negociosSeleccionados) {
-      final negocioSnapshot = await _firestore.collection('negocios').doc(negocioId).get();
+      final negocioSnapshot =
+          await _firestore.collection('negocios').doc(negocioId).get();
       final negocioData = negocioSnapshot.data();
-      
+
       if (negocioData != null) {
         final productosSnapshot = await _firestore
             .collection('productos')
@@ -105,8 +132,9 @@ final List<String> _meses = [
       }
     }
   }
+
   // Iniciar escaneo
-    Future<void> _startScanning() async {
+  Future<void> _startScanning() async {
     if (!isCsvLoaded) {
       await _loadCsvData();
     }
@@ -123,12 +151,13 @@ final List<String> _meses = [
   }
 
   // Mostrar el BottomSheet con la información del producto
- void _showProductBottomSheet(String scannedCode) {
+  void _showProductBottomSheet(String scannedCode) {
     if (isBottomSheetOpen) return; // Evitar múltiples bottomsheets
 
     setState(() {
       isBottomSheetOpen = true;
-      scanning = false; // Desactivar escaneo mientras el bottomsheet está abierto
+      scanning =
+          false; // Desactivar escaneo mientras el bottomsheet está abierto
     });
 
     // Buscar el producto en la lista
@@ -139,7 +168,7 @@ final List<String> _meses = [
 
     if (productoEncontrado.isNotEmpty) {
       cantidadController.text = productoEncontrado['cantidadActual'].toString();
-      
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -153,7 +182,8 @@ final List<String> _meses = [
               ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.2),
@@ -219,9 +249,11 @@ final List<String> _meses = [
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () {
-                                final cantidadActual = int.tryParse(cantidadController.text) ?? 0;
+                                final cantidadActual =
+                                    int.tryParse(cantidadController.text) ?? 0;
                                 setState(() {
-                                  productoEncontrado['cantidadActual'] = cantidadActual;
+                                  productoEncontrado['cantidadActual'] =
+                                      cantidadActual;
                                   isBottomSheetOpen = false;
                                   scanning = true;
                                 });
@@ -254,26 +286,28 @@ final List<String> _meses = [
         scanning = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Producto con código $scannedCode no encontrado')),
+        SnackBar(
+            content: Text('Producto con código $scannedCode no encontrado')),
       );
     }
   }
+
   // Detener el conteo y guardar el CSV
-Future<void> _detenerConteo() async {
+  Future<void> _detenerConteo() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final file = File('${directory.path}/ConteoNegocios_$timestamp.csv');
-      
+
       final csvData = [
         ['Nombre Negocio', 'Código', 'Artículo', 'Existencia', 'Actual'],
         ...productos.map((p) => [
-          p['nombreEmpresa'],
-          p['codigo'],
-          p['articulo'],
-          p['cantidadExistente'],
-          p['cantidadActual'],
-        ]),
+              p['nombreEmpresa'],
+              p['codigo'],
+              p['articulo'],
+              p['cantidadExistente'],
+              p['cantidadActual'],
+            ]),
       ];
 
       await file.writeAsString(const ListToCsvConverter().convert(csvData));
@@ -290,7 +324,7 @@ Future<void> _detenerConteo() async {
     }
   }
 
- Future<void> _loadCsvData() async {
+  Future<void> _loadCsvData() async {
     try {
       final input = File(widget.csvPath).openRead();
       final fields = await input
@@ -325,7 +359,7 @@ Future<void> _detenerConteo() async {
 // Método para editar cantidad manualmente
   Future<void> _editProductQuantity(Map<String, dynamic> producto) async {
     cantidadController.text = producto['cantidadActual'].toString();
-    
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -359,171 +393,319 @@ Future<void> _detenerConteo() async {
   }
 
   Future<void> _mostrarDialogoGuardado() async {
-  final formKey = GlobalKey<FormState>();
-  
-  await showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => AlertDialog(
-      title: const Text('Guardar conteo'),
-      content: Form(
-        key: formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del archivo',
-                  hintText: 'Ej: Inventario Tienda Central'
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Guardar conteo'),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  decoration: const InputDecoration(
+                      labelText: 'Nombre del archivo',
+                      hintText: 'Ej: Inventario Tienda Central'),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Por favor ingresa un nombre';
+                    }
+                    return null;
+                  },
+                  onChanged: (value) => _nombreArchivo = value,
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Por favor ingresa un nombre';
-                  }
-                  return null;
-                },
-                onChanged: (value) => _nombreArchivo = value,
-              ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                value: _mesSeleccionado,
-                items: _meses.map((String mes) {
-                  return DropdownMenuItem<String>(
-                    value: mes,
-                    child: Text(mes),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _mesSeleccionado = newValue!;
-                  });
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Mes del inventario'
+                const SizedBox(height: 20),
+                DropdownButtonFormField<String>(
+                  value: _mesSeleccionado,
+                  items: _meses.map((String mes) {
+                    return DropdownMenuItem<String>(
+                      value: mes,
+                      child: Text(mes),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _mesSeleccionado = newValue!;
+                    });
+                  },
+                  decoration:
+                      const InputDecoration(labelText: 'Mes del inventario'),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context);
+                await _guardarConteoCompleto();
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            if (formKey.currentState!.validate()) {
-              Navigator.pop(context);
-              await _guardarConteoCompleto();
-            }
-          },
-          child: const Text('Guardar'),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
 // Función mejorada para guardar el conteo
-Future<void> _guardarConteoCompleto() async {
-  // Mostrar indicador de carga
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => const Center(child: CircularProgressIndicator()),
-  );
-
-  try {
-    final directory = await getApplicationDocumentsDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final nombreArchivo = '${_nombreArchivo.replaceAll(' ', '_')}_$timestamp.csv';
-    
-    // 1. Guardar archivo localmente
-    final csvData = [
-      ['Nombre Negocio', 'Código', 'Artículo', 'Existencia', 'Actual'],
-      ...productos.map((p) => [
-        p['nombreEmpresa'],
-        p['codigo'],
-        p['articulo'],
-        p['cantidadExistente'],
-        p['cantidadActual'],
-      ]),
-    ];
-
-    final file = File('${directory.path}/$nombreArchivo');
-    await file.writeAsString(const ListToCsvConverter().convert(csvData));
-
-    // 2. Subir a Firebase Storage
-    final storage = FirebaseStorage.instance;
-    final storageRef = storage.ref().child('inventarios/$nombreArchivo');
-    await storageRef.putFile(file);
-    final downloadUrl = await storageRef.getDownloadURL();
-
-    // 3. Guardar metadatos en Firestore
-    await _firestore.collection('conteos').add({
-      'nombre': _nombreArchivo,
-      'mes': _mesSeleccionado,
-      'fecha': FieldValue.serverTimestamp(),
-      'url': downloadUrl,
-      'estatus': 'finished',
-      'negocios': widget.negociosSeleccionados,
-      'userId': _firestore.doc('users/${_getCurrentUserId()}'), // Ajusta según tu auth
-    });
-
-    // 4. Actualizar estado de los productos si es necesario
-    // (Agrega aquí la lógica para actualizar productos si lo necesitas)
-
-    if (!mounted) return;
-    Navigator.pop(context); // Cerrar diálogo de carga
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Conteo guardado exitosamente')),
+  Future<void> _guardarConteoCompleto() async {
+    // Mostrar indicador de carga
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    // Opcional: Navegar a pantalla anterior
-    // Navigator.pop(context);
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final nombreArchivo =
+          '${_nombreArchivo.replaceAll(' ', '_')}_$timestamp.csv';
+      final nombreArchivoPDF =
+          '${_nombreArchivo.replaceAll(' ', '_')}_$timestamp.pdf';
 
-  } catch (e) {
-    if (!mounted) return;
-    Navigator.pop(context); // Cerrar diálogo de carga
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error al guardar: $e')),
-    );
+      // 1. Filtrar productos para quedarnos solo con los que tienen diferencias
+      final productosFiltrados = productos.where((p) {
+        return p['cantidadExistente'] != p['cantidadActual'];
+      }).toList();
+
+      // 2. Generar CSV con los productos filtrados
+      final csvData = [
+        [
+          'Nombre Negocio',
+          'Código',
+          'Artículo',
+          'Existencia',
+          'Actual',
+          'Diferencia'
+        ],
+        ...productosFiltrados.map((p) => [
+              p['nombreEmpresa'],
+              p['codigo'],
+              p['articulo'],
+              p['cantidadExistente'],
+              p['cantidadActual'],
+              (p['cantidadActual'] - p['cantidadExistente']).toString(),
+            ]),
+      ];
+
+      final file = File('${directory.path}/$nombreArchivo');
+      await file.writeAsString(const ListToCsvConverter().convert(csvData));
+
+      // 3. Generar PDF con los productos filtrados
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.Page(
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Header(
+                  level: 0,
+                  child: pw.Text(
+                    'Reporte de Inventario',
+                    style: pw.TextStyle(
+                        fontSize: 24, fontWeight: pw.FontWeight.bold),
+                  ),
+                ),
+                pw.SizedBox(height: 10),
+                pw.Text('Conteo: $_nombreArchivo'),
+                pw.Text(
+                    'Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}'),
+                pw.SizedBox(height: 20),
+                pw.Table.fromTextArray(
+                  headers: [
+                    'Negocio',
+                    'Código',
+                    'Artículo',
+                    'Existencia',
+                    'Actual',
+                    'Diferencia'
+                  ],
+                  data: productosFiltrados
+                      .map((p) => [
+                            p['nombreEmpresa'],
+                            p['codigo'],
+                            p['articulo'],
+                            p['cantidadExistente'].toString(),
+                            p['cantidadActual'].toString(),
+                            (p['cantidadActual'] - p['cantidadExistente'])
+                                .toString(),
+                          ])
+                      .toList(),
+                  headerStyle: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white,
+                  ),
+                  headerDecoration: const pw.BoxDecoration(
+                    color: PdfColors.blue700,
+                  ),
+                  cellHeight: 30,
+                  cellAlignments: {
+                    0: pw.Alignment.centerLeft,
+                    1: pw.Alignment.center,
+                    2: pw.Alignment.centerLeft,
+                    3: pw.Alignment.center,
+                    4: pw.Alignment.center,
+                    5: pw.Alignment.center,
+                  },
+                  border: pw.TableBorder.all(
+                    color: PdfColors.grey300,
+                    width: 1,
+                  ),
+                ),
+                pw.SizedBox(height: 20),
+                pw.Text(
+                  'Total de productos con diferencias: ${productosFiltrados.length}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      final pdfFile = File('${directory.path}/$nombreArchivoPDF');
+      await pdfFile.writeAsBytes(await pdf.save());
+
+      // 4. Subir ambos archivos a Firebase Storage
+      final storage = FirebaseStorage.instance;
+
+      // Subir CSV
+      final csvRef = storage.ref().child('inventarios/$nombreArchivo');
+      await csvRef.putFile(file);
+      final csvUrl = await csvRef.getDownloadURL();
+
+      // Subir PDF
+      final pdfRef = storage.ref().child('inventarios/$nombreArchivoPDF');
+      await pdfRef.putFile(pdfFile);
+      final pdfUrl = await pdfRef.getDownloadURL();
+
+      // 5. Guardar metadatos en Firestore
+      await _firestore.collection('conteos').add({
+        'nombre': _nombreArchivo,
+        'mes': _mesSeleccionado,
+        'fecha': FieldValue.serverTimestamp(),
+        'url_csv': csvUrl,
+        'url_pdf': pdfUrl,
+        'estatus': 'finished',
+        'negocios': widget.negociosSeleccionados,
+        'productos_con_diferencia': productosFiltrados.length,
+        'userId': _firestore.doc('users/${_getCurrentUserId()}'),
+      });
+
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar diálogo de carga
+
+      // 6. Opción para compartir el PDF
+      await Share.shareXFiles(
+        [XFile(pdfFile.path)],
+        text: 'Reporte de inventario - $_nombreArchivo',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conteo guardado exitosamente')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar diálogo de carga
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar: $e')),
+      );
+    }
   }
-}
 
 // Función para pausar el conteo
-Future<void> _pausarConteo() async {
-  try {
-    // Guardar estado intermedio si es necesario
-    await _firestore.collection('conteos').add({
-      'fecha': FieldValue.serverTimestamp(),
-      'estatus': 'paused',
-      'negocios': widget.negociosSeleccionados,
-      'usuario': _firestore.doc('usuarios/${_getCurrentUserId()}'),
-    });
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Conteo pausado')),
+  Future<void> _pausarConteo() async {
+    // Mostrar indicador de carga
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error al pausar: $e')),
-    );
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final nombreArchivo =
+          '${_nombreArchivo.replaceAll(' ', '_')}_pausado_$timestamp.csv';
+
+      // 1. Guardar archivo CSV con el progreso actual
+      final csvData = [
+        ['Nombre Negocio', 'Código', 'Artículo', 'Existencia', 'Actual'],
+        ...productos.map((p) => [
+              p['nombreEmpresa'],
+              p['codigo'],
+              p['articulo'],
+              p['cantidadExistente'],
+              p['cantidadActual'],
+            ]),
+      ];
+
+      final file = File('${directory.path}/$nombreArchivo');
+      await file.writeAsString(const ListToCsvConverter().convert(csvData));
+
+      // 2. Subir a Firebase Storage
+      final storage = FirebaseStorage.instance;
+      final storageRef = storage.ref().child('conteos_pausados/$nombreArchivo');
+      await storageRef.putFile(file);
+      final downloadUrl = await storageRef.getDownloadURL();
+
+      // 3. Guardar metadatos en Firestore con estado "paused"
+      final docRef = await _firestore.collection('conteos').add({
+        'nombre': _nombreArchivo,
+        'mes': _mesSeleccionado,
+        'fecha': FieldValue.serverTimestamp(),
+        'fecha_pausa': FieldValue.serverTimestamp(),
+        'url_csv': downloadUrl,
+        'estatus': 'paused',
+        'negocios': widget.negociosSeleccionados,
+        'productos_contados': productos.length,
+        'usuario': _firestore.doc('usuarios/${_getCurrentUserId()}'),
+        'id_temporal':
+            '${_getCurrentUserId()}_$timestamp', // ID para recuperar fácilmente
+      });
+
+      // 4. Guardar referencia localmente para fácil recuperación
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('ultimo_conteo_pausado', docRef.id);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar diálogo de carga
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conteo pausado y progreso guardado')),
+      );
+
+      // Opcional: Navegar a pantalla anterior o mostrar botón "Reanudar"
+      // Navigator.pop(context, true); // Para indicar que fue pausado
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Cerrar diálogo de carga
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al pausar conteo: $e')),
+      );
+    }
   }
-}
 
 // Actualiza tu floatingActionButton:
 
-
 // Método para detener el escaneo
- Widget build(BuildContext context) {
+  Widget build(BuildContext context) {
     if (isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text("Preparando escáner...")),
@@ -694,14 +876,16 @@ Future<void> _pausarConteo() async {
                         itemBuilder: (context, index) {
                           final producto = productos[index];
                           final isScanned = producto['cantidadActual'] > 0;
-                          
+
                           return Card(
                             margin: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             color: isScanned ? Colors.green[50] : Colors.white,
                             child: ListTile(
                               leading: Icon(
-                                isScanned ? Icons.check_circle : Icons.circle_outlined,
+                                isScanned
+                                    ? Icons.check_circle
+                                    : Icons.circle_outlined,
                                 color: isScanned ? Colors.green : Colors.grey,
                               ),
                               title: Text(
@@ -769,29 +953,25 @@ Future<void> _pausarConteo() async {
         ],
       ),
       floatingActionButton: Column(
-  mainAxisSize: MainAxisSize.min,
-  children: [
-    FloatingActionButton(
-      heroTag: 'btn_pausar',
-      onPressed: _pausarConteo,
-      tooltip: 'Pausar conteo',
-      backgroundColor: Colors.orange,
-      child: const Icon(Icons.pause),
-    ),
-    const SizedBox(height: 10),
-    FloatingActionButton.extended(
-      heroTag: 'btn_guardar',
-      onPressed: _mostrarDialogoGuardado,
-      icon: const Icon(Icons.save),
-      label: const Text('Guardar Conteo'),
-      backgroundColor: Colors.green,
-    ),
-  ],
-),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+            heroTag: 'btn_pausar',
+            onPressed: _pausarConteo,
+            tooltip: 'Pausar conteo',
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.pause),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'btn_guardar',
+            onPressed: _mostrarDialogoGuardado,
+            icon: const Icon(Icons.save),
+            label: const Text('Guardar Conteo'),
+            backgroundColor: Colors.green,
+          ),
+        ],
+      ),
     );
   }
-
 }
-
-
-
