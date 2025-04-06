@@ -50,6 +50,7 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
   MobileScannerController cameraController = MobileScannerController();
   String _nombreArchivo = '';
   String _mesSeleccionado = 'Enero';
+  String _codigoManual = '';
   final List<String> _meses = [
     'Enero',
     'Febrero',
@@ -77,6 +78,92 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
         isCsvLoaded = true;
       });
     });
+  }
+
+  void _mostrarBottomSheetCodigoManual() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Ingresar código manualmente',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Código del producto',
+                  border: OutlineInputBorder(),
+                  hintText: 'Ej: ABC123, 456XYZ',
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _codigoManual = value.trim();
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _codigoManual.isEmpty
+                          ? null
+                          : () {
+                              Navigator.pop(context);
+                              _buscarProductoPorCodigo(_codigoManual);
+                            },
+                      child: const Text('Buscar'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+// Método para buscar productos por código
+  void _buscarProductoPorCodigo(String codigo) {
+    final producto = productos.firstWhere(
+      (p) => p['codigo'].toString().toLowerCase() == codigo.toLowerCase(),
+      orElse: () => {},
+    );
+
+    if (producto.isNotEmpty) {
+      _showProductBottomSheet(codigo);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se encontró producto con código: $codigo'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   String _getCurrentUserId() {
@@ -726,10 +813,28 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
       appBar: AppBar(
         title: const Text("Conteo Escaneo"),
         actions: [
+          // Botón de Pausar (naranja)
           IconButton(
-            icon: Icon(scanning ? Icons.pause : Icons.play_arrow),
+            icon: const Icon(Icons.pause, color: Colors.orange),
+            onPressed: _pausarConteo,
+            tooltip: 'Pausar conteo',
+          ),
+
+          // Botón de Guardar (verde)
+          IconButton(
+            icon: const Icon(Icons.save, color: Colors.green),
+            onPressed: _mostrarDialogoGuardado,
+            tooltip: 'Guardar conteo',
+          ),
+
+          // Botón de Escaneo (azul/blanco según estado)
+          IconButton(
+            icon: Icon(
+              scanning ? Icons.camera_alt : Icons.camera_alt_outlined,
+              color: scanning ? Colors.blue : Colors.white,
+            ),
             onPressed: scanning ? _stopScanning : _startScanning,
-            tooltip: scanning ? 'Pausar escaneo' : 'Continuar escaneo',
+            tooltip: scanning ? 'Detener escaneo' : 'Iniciar escaneo',
           ),
         ],
       ),
@@ -757,7 +862,6 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
                       }
                     },
                   ),
-                  // Overlay de guía para escaneo
                   Positioned.fill(
                     child: Align(
                       alignment: Alignment.center,
@@ -782,7 +886,6 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
                       ),
                     ),
                   ),
-                  // Indicador de código escaneado
                   if (codigoEscaneado.isNotEmpty)
                     Positioned(
                       bottom: 20,
@@ -935,43 +1038,67 @@ class _ConteoEscaneoScreenState extends State<ConteoEscaneoScreen> {
           if (!scanning)
             Container(
               padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _startScanning,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Colors.blue,
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _startScanning,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.blue,
+                      ),
+                      child: const Text(
+                        'CONTINUAR ESCANEO',
+                        style: TextStyle(fontSize: 15),
+                      ),
+                    ),
                   ),
-                  child: const Text(
-                    'INICIAR ESCANEO',
-                    style: TextStyle(fontSize: 18),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _mostrarBottomSheetCodigoManual,
+                      icon: const Icon(Icons.keyboard),
+                      label: const Text('CÓDIGO MANUAL'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            heroTag: 'btn_pausar',
-            onPressed: _pausarConteo,
-            tooltip: 'Pausar conteo',
-            backgroundColor: Colors.orange,
-            child: const Icon(Icons.pause),
-          ),
-          const SizedBox(height: 10),
-          FloatingActionButton.extended(
-            heroTag: 'btn_guardar',
-            onPressed: _mostrarDialogoGuardado,
-            icon: const Icon(Icons.save),
-            label: const Text('Guardar Conteo'),
-            backgroundColor: Colors.green,
-          ),
-        ],
-      ),
+      // floatingActionButton: Column(
+      //   mainAxisSize: MainAxisSize.min,
+      //   children: [
+      //     FloatingActionButton(
+      //       heroTag: 'btn_codigo',
+      //       onPressed: _mostrarBottomSheetCodigoManual,
+      //       tooltip: 'Código manual',
+      //       backgroundColor: Colors.blue,
+      //       child: const Icon(Icons.keyboard),
+      //     ),
+      //     const SizedBox(height: 10),
+      //     FloatingActionButton(
+      //       heroTag: 'btn_pausar',
+      //       onPressed: _pausarConteo,
+      //       tooltip: 'Pausar conteo',
+      //       backgroundColor: Colors.orange,
+      //       child: const Icon(Icons.pause),
+      //     ),
+      //     const SizedBox(height: 10),
+      //     FloatingActionButton.extended(
+      //       heroTag: 'btn_guardar',
+      //       onPressed: _mostrarDialogoGuardado,
+      //       icon: const Icon(Icons.save),
+      //       label: const Text('Guardar'),
+      //       backgroundColor: Colors.green,
+      //     ),
+      //   ],
+      // ),
     );
   }
 }
