@@ -53,70 +53,52 @@ class _InventoryPageState extends State<InventoryPage> {
   //List<Map<String, dynamic>> productsList = [];
   int? editingIndex;
 
-  Future<void> _pickImageProducts(int productIndex,
-      {bool isMainImage = true}) async {
-    await showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Wrap(
-            children: <Widget>[
-              ListTile(
-                leading: Icon(Icons.photo_library),
-                title: Text('Galería'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final pickedFile =
-                      await picker.pickImage(source: ImageSource.gallery);
-                  if (pickedFile != null) {
-                    final File imageFile = File(pickedFile.path);
-                    final File cachedImageFile =
-                        await _copyFileToCache(imageFile);
+ Future<void> _pickImageProducts(int productIndex, {bool isMainImage = true}) async {
+  await showModalBottomSheet(
+    context: context,
+    builder: (BuildContext context) {
+      return SafeArea(
+        child: Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: Icon(Icons.photo_library),
+              title: Text('Galería'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _pickImageAndSet(productIndex, ImageSource.gallery, isMainImage);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_camera),
+              title: Text('Cámara'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _pickImageAndSet(productIndex, ImageSource.camera, isMainImage);
+              },
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
 
-                    setState(() {
-                      if (isMainImage) {
-                        productControllers[productIndex]['imagen'] =
-                            cachedImageFile;
-                      } else {
-                        productControllers[productIndex]['storeImgs'] ??= [];
-                        productControllers[productIndex]['storeImgs']
-                            .add(cachedImageFile);
-                      }
-                    });
-                  }
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.photo_camera),
-                title: Text('Cámara'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final pickedFile =
-                      await picker.pickImage(source: ImageSource.camera);
-                  if (pickedFile != null) {
-                    final File imageFile = File(pickedFile.path);
-                    final File cachedImageFile =
-                        await _copyFileToCache(imageFile);
+Future<void> _pickImageAndSet(int productIndex, ImageSource source, bool isMainImage) async {
+  final pickedFile = await picker.pickImage(source: source);
+  if (pickedFile != null) {
+    final File imageFile = File(pickedFile.path);
+    final File cachedImageFile = await _copyFileToCache(imageFile);
 
-                    setState(() {
-                      if (isMainImage) {
-                        productControllers[productIndex]['imagen'] =
-                            cachedImageFile;
-                      } else {
-                        productControllers[productIndex]['storeImgs'] ??= [];
-                        productControllers[productIndex]['storeImgs']
-                            .add(cachedImageFile);
-                      }
-                    });
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    setState(() {
+      if (isMainImage) {
+        productControllers[productIndex]['imagen'] = cachedImageFile;
+      } else {
+        productControllers[productIndex]['storeImgs'] ??= [];
+        productControllers[productIndex]['storeImgs'].add(cachedImageFile);
+      }
+    });
   }
+}
 
   Future<File> _copyFileToCache(File originalFile) async {
     final directory = await getTemporaryDirectory();
@@ -1096,64 +1078,60 @@ class _InventoryPageState extends State<InventoryPage> {
           SizedBox(height: 16.0),
 
           // Selector de categoría (nuevo)
-          StreamBuilder<QuerySnapshot>(
-            stream:
-                FirebaseFirestore.instance.collection('categories').snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Text('Error al cargar categorías: ${snapshot.error}');
-              }
+         StreamBuilder<QuerySnapshot>(
+  stream: FirebaseFirestore.instance.collection('categories').snapshots(),
+  builder: (context, snapshot) {
+    if (snapshot.hasError) {
+      return Text('Error al cargar categorías: ${snapshot.error}');
+    }
 
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return CircularProgressIndicator();
-              }
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return CircularProgressIndicator();
+    }
 
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return DropdownButton<String>(
-                  value: selectedCategoryId,
-                  onChanged: (String? newValue) =>
-                      setState(() => selectedCategoryId = newValue),
-                  items: [
-                    DropdownMenuItem(
-                      value: null,
-                      child: Text('No hay categorías disponibles',
-                          style: TextStyle(color: Colors.grey)),
-                    ),
-                  ],
-                  hint: Text('Seleccionar categoría'),
-                );
-              }
-
-              final categories = snapshot.data!.docs.map((doc) {
-                return {
-                  'id': doc.id,
-                  'nombre': doc['nombre'],
-                };
-              }).toList();
-
-              return DropdownButton<String>(
-                value: selectedCategoryId,
-                onChanged: (String? newValue) =>
-                    setState(() => selectedCategoryId = newValue),
-                items: [
-                  DropdownMenuItem<String>(
-                    value: null,
-                    child: Text(
-                      'Sin categoría',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                  ...categories.map<DropdownMenuItem<String>>((category) {
-                    return DropdownMenuItem<String>(
-                      value: category['id'],
-                      child: Text(category['nombre']),
-                    );
-                  }).toList(),
-                ], // <-- Closing bracket added here
-                hint: Text('Seleccionar categoría'),
-              );
-            },
+    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+      return DropdownButton<String>(
+        value: selectedCategoryId,
+        onChanged: (String? newValue) =>
+            setState(() => selectedCategoryId = newValue),
+        items: [
+          DropdownMenuItem<String>(
+            value: null,
+            child: Text('No hay categorías disponibles', style: TextStyle(color: Colors.grey)),
           ),
+        ],
+        hint: Text('Seleccionar categoría'),
+      );
+    }
+
+    final categories = snapshot.data!.docs.map((doc) {
+      return {
+        'id': doc.id,
+        'nombre': doc['nombre'],
+      };
+    }).toList();
+
+    return DropdownButton<String>(
+      value: selectedCategoryId,
+      onChanged: (String? newValue) =>
+          setState(() => selectedCategoryId = newValue),
+      items: [
+        DropdownMenuItem<String>(
+          value: null,
+          child: Text('Sin categoría', style: TextStyle(color: Colors.grey)),
+        ),
+        ...categories.map<DropdownMenuItem<String>>((category) {
+          return DropdownMenuItem<String>(
+            value: category['id'],
+            child: Text(category['nombre']),
+          );
+        }).toList(),
+      ],
+      hint: Text('Seleccionar categoría'),
+    );
+  },
+),
+
 
           SizedBox(height: 16.0),
 
@@ -1308,76 +1286,164 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildProductTable() {
-    return productsList.isEmpty
-        ? Center(child: Text('No hay productos agregados.'))
-        : SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columns: [
-                DataColumn(label: Text('Código')),
-                DataColumn(label: Text('Nombre')),
-                DataColumn(label: Text('Precio')),
-                DataColumn(label: Text('Cantidad')),
-                DataColumn(label: Text('Categoría')),
-                DataColumn(label: Text('Imagen')),
-                DataColumn(label: Text('Imágenes Adicionales')),
-                DataColumn(label: Text('Acciones')),
-              ],
-              rows: productsList.map((product) {
-                int index = productsList.indexOf(product);
-                return DataRow(cells: [
-                  DataCell(Text(product['codigo']?.toString() ?? '')),
-                  DataCell(Text(product['nombre']?.toString() ?? '')),
-                  DataCell(Text(product['precio']?.toString() ?? '')),
-                  DataCell(Text(product['cantidad']?.toString() ?? '')),
-                  DataCell(Text(
-                      product['categoria']?.toString() ?? 'Sin categoría')),
-                  DataCell(
-                    product['imagen'] == null
-                        ? Text('Sin imagen')
-                        : Image.file(
-                            product['imagen'] as File,
-                            height: 50,
-                            width: 50,
-                            fit: BoxFit.cover,
+Widget _buildProductTable() {
+  return productsList.isEmpty
+      ? Center(child: Text('No hay productos agregados.'))
+      : SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              DataColumn(label: Text('Código')),
+              DataColumn(label: Text('Nombre')),
+              DataColumn(label: Text('Precio')),
+              DataColumn(label: Text('Cantidad')),
+              DataColumn(label: Text('Categoría')),
+              DataColumn(label: Text('Imagen')),
+              DataColumn(label: Text('Imágenes Adicionales')),
+              DataColumn(label: Text('Acciones')),
+            ],
+            rows: productsList.map((product) {
+              int index = productsList.indexOf(product);
+              
+              // Asegurarse de que el precio es un número
+              double precio = 0.0;
+              var rawPrecio = product['precio'];
+              if (rawPrecio is int) {
+                precio = rawPrecio.toDouble();
+              } else if (rawPrecio is double) {
+                precio = rawPrecio;
+              } else if (rawPrecio is String) {
+                precio = double.tryParse(rawPrecio) ?? 0.0;
+              }
+
+              return DataRow(cells: [
+                DataCell(Text(product['codigo']?.toString() ?? 'N/A')),
+                DataCell(Text(product['nombre']?.toString() ?? 'N/A')),
+                DataCell(Text('\$${precio.toStringAsFixed(2)}')),
+                DataCell(Text(product['cantidad']?.toString() ?? '0')),
+                DataCell(
+  FutureBuilder<DocumentSnapshot>(
+    future: product['categoriaId'] != null
+        ? FirebaseFirestore.instance
+            .collection('categories')
+            .doc(product['categoriaId'])
+            .get()
+        : FirebaseFirestore.instance
+            .collection('categories')
+            .doc('_fake_id')
+            .get(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(),
+        );
+      }
+
+      return Text(
+        snapshot.hasData && snapshot.data?.exists == true
+            ? snapshot.data!['nombre']
+            : 'Sin categoría',
+      );
+    },
+  ),
+),
+
+                DataCell(
+                  product['imagen'] == null
+                      ? Icon(Icons.image_not_supported, size: 30)
+                      : product['imagen'] is File
+                          ? Image.file(
+                              product['imagen'] as File,
+                              height: 50,
+                              width: 50,
+                              fit: BoxFit.cover,
+                            )
+                          : product['imagen'] is String
+                              ? Image.network(
+                                  product['imagen'] as String,
+                                  height: 50,
+                                  width: 50,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      Icon(Icons.broken_image),
+                                )
+                              : Icon(Icons.image_not_supported),
+                ),
+                DataCell(
+                  (product['storeImgs'] as List?)?.isNotEmpty == true
+                      ? SizedBox(
+                          height: 50,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            shrinkWrap: true,
+                            children: (product['storeImgs'] as List).map((image) {
+                              return Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: GestureDetector(
+                                  onTap: () => _showImageDialog(image),
+                                  child: image is File
+                                      ? Image.file(
+                                          image,
+                                          height: 40,
+                                          width: 40,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : image is String
+                                          ? Image.network(
+                                              image,
+                                              height: 40,
+                                              width: 40,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  Icon(Icons.broken_image),
+                                            )
+                                          : Icon(Icons.image_not_supported),
+                                ),
+                              );
+                            }).toList(),
                           ),
-                  ),
-                  DataCell(
-                    Wrap(
-                      spacing: 4,
-                      children: List<Widget>.from(
-                        (product['storeImgs'] as List<dynamic>? ?? [])
-                            .map<Widget>((image) {
-                          return Image.file(
-                            image as File,
-                            height: 40,
-                            width: 40,
-                            fit: BoxFit.cover,
-                          );
-                        }),
+                        )
+                      : Text('Ninguna'),
+                ),
+                DataCell(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.edit, color: Colors.blue, size: 20),
+                        onPressed: () => _editProduct(index),
                       ),
-                    ),
+                      IconButton(
+                        icon: Icon(Icons.delete, color: Colors.red, size: 20),
+                        onPressed: () => _deleteProduct(index),
+                      ),
+                    ],
                   ),
-                  DataCell(
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.edit),
-                          onPressed: () => _editProduct(index),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.delete),
-                          onPressed: () => _deleteProduct(index),
-                        ),
-                      ],
-                    ),
-                  ),
-                ]);
-              }).toList(),
-            ),
-          );
-  }
+                ),
+              ]);
+            }).toList(),
+          ),
+        );
+}
+
+
+void _showImageDialog(dynamic image) {
+  showDialog(
+    context: context,
+    builder: (context) => Dialog(
+      child: Container(
+        padding: EdgeInsets.all(10),
+        child: image is File
+            ? Image.file(image)
+            : image is String
+                ? Image.network(image)
+                : Icon(Icons.image_not_supported),
+      ),
+    ),
+  );
+}
 
   // Método para construir la lista de negocios
   Widget _buildBusinessList() {

@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -28,6 +27,8 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
   List<Map<String, dynamic>> outOfStockProducts = [];
   bool isLoading = true;
   List<Map<String, dynamic>> _salesReportData = [];
+
+
   DateTimeRange _selectedRange = DateTimeRange(
     start: DateTime.now().subtract(Duration(days: 7)),
     end: DateTime.now(),
@@ -41,72 +42,6 @@ class _BusinessOwnerScreenState extends State<BusinessOwnerScreen> {
 
 
 
-  Future<void> _exportToPDF(String fileName) async {
-    if (_salesReportData.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('No hay datos de ventas para generar el reporte')),
-      );
-      return;
-    }
-
-    try {
-      final pdf = pw.Document();
-      final total = _salesReportData.fold<double>(
-          0, (sum, item) => sum + (item['subtotal'] ?? 0));
-
-      pdf.addPage(
-        pw.Page(
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Header(text: 'Reporte de Ventas - $businessName'),
-                pw.Text(
-                    'Período: ${DateFormat('dd/MM/yyyy').format(_selectedRange.start)} - ${DateFormat('dd/MM/yyyy').format(_selectedRange.end)}'),
-                pw.SizedBox(height: 20),
-                pw.Table.fromTextArray(
-                  headers: [
-                    'Fecha',
-                    'Producto',
-                    'Cantidad',
-                    'P. Unitario',
-                    'Subtotal'
-                  ],
-                  data: _salesReportData
-                      .map((sale) => [
-                            sale['fecha'],
-                            sale['nombre'],
-                            sale['cantidad'].toString(),
-                            '\$${(sale['precio'] ?? 0).toStringAsFixed(2)}',
-                            '\$${(sale['subtotal'] ?? 0).toStringAsFixed(2)}',
-                          ])
-                      .toList(),
-                ),
-                pw.SizedBox(height: 20),
-                pw.Align(
-                  alignment: pw.Alignment.centerRight,
-                  child: pw.Text(
-                    'TOTAL: \$${total.toStringAsFixed(2)}',
-                    style: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-
-      await _saveAndOpenPdf(await pdf.save(), fileName);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al generar PDF: $e')),
-      );
-    }
-  }
 
 Future<void> _selectCustomRange() async {
     final DateTimeRange? picked = await showDateRangePicker(

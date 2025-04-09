@@ -152,7 +152,7 @@ class _SalesReportBottomSheetState extends State<SalesReportBottomSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Formato de Exportación:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
         SizedBox(height: 10),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -175,45 +175,38 @@ class _SalesReportBottomSheetState extends State<SalesReportBottomSheet> {
   }
 
   Widget _buildGenerateButton() {
-    final buttonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.blue,
-      minimumSize: const Size(double.infinity, 50),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-    );
+  final buttonStyle = ElevatedButton.styleFrom(
+    backgroundColor: Colors.blue,
+    minimumSize: const Size(double.infinity, 50),
+    padding: const EdgeInsets.symmetric(vertical: 12),
+  );
 
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        style: buttonStyle,
-        onPressed: _isGenerating
-            ? null
-            : () async {
-                setState(() => _isGenerating = true);
-                await _generateReport();
-                if (mounted) {
-                  setState(() => _isGenerating = false);
-                }
-              },
-        child: _isGenerating
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Text(
-                'Generar y Exportar Reporte',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                ),
+  return SizedBox(
+    width: double.infinity,
+    child: ElevatedButton(
+      style: buttonStyle,
+      onPressed: _isGenerating ? null : _generateReport,
+      child: _isGenerating
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
               ),
-      ),
-    );
-  }
+            )
+          : const Text(
+              'Generar y Exportar Reporte',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+              ),
+            ),
+    ),
+  );
+}
+
 
 Future<void> _selectCustomRange() async {
     final DateTimeRange? picked = await showDateRangePicker(

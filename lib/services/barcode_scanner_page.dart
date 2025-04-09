@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class BarcodeScannerPage extends StatefulWidget {
@@ -17,6 +19,19 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   void dispose() {
     _cameraController.dispose(); // Liberar recursos de la cámara
     super.dispose();
+  }
+
+   void _handleScanned(String scannedCode) {
+    switch (widget.previousRoute) {
+      case 'sales_new':
+        Get.back(result: {'barcode': scannedCode});
+        break;
+      case 'inventory':
+        Get.back(result: {'inventory_code': scannedCode});
+        break;
+      default:
+        Get.back(result: {'barcode': scannedCode});
+    }
   }
 
   @override
@@ -40,8 +55,8 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             onDetect: (capture) {
               final List<Barcode> barcodes = capture.barcodes;
               if (barcodes.isNotEmpty) {
-                final String barcode = barcodes.first.rawValue ?? "";
-                Navigator.pop(context, {'barcode': barcode, 'previousRoute': widget.previousRoute});
+                 final String barcode = barcodes.first.rawValue ?? "";
+                _handleScanned(barcode);
               }
             },
           ),
