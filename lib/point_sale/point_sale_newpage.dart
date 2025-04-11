@@ -760,7 +760,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
               children: <Widget>[
                 DrawerHeader(
                   decoration: BoxDecoration(
-                    color: Colors.blue,
+                    color: Colors.black,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

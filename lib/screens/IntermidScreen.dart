@@ -8,7 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'login_screen.dart'; // Importa tu pantalla de login
 
-class SplashScreen extends StatelessWidget {
+class IntermidScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(

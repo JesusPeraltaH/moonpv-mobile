@@ -37,6 +37,8 @@ class _InventoryPageState extends State<InventoryPage> {
   // Variables adicionales para el estado
   String? selectedCategoryId;
   List<File> _tempAdditionalImages = [];
+  bool _isSaving = false;
+
 
   // Controladores para los productos
   List<Map<String, dynamic>> productControllers = [
@@ -261,87 +263,111 @@ Future<void> _pickImageAndSet(int productIndex, ImageSource source, bool isMainI
   }
 
 // Método para guardar productos (actualizado)
-  Future<void> _addProducts(String businessId) async {
-    try {
-      final batch = FirebaseFirestore.instance.batch();
+ Future<void> _addProducts(String businessId) async {
+  setState(() {
+    _isSaving = true;
+  });
 
-      for (var product in productsList) {
-        // Subir imagen principal
-        String? mainImageUrl;
-        if (product['imagen'] != null) {
-          mainImageUrl = await _uploadImage(product['imagen'],
-              'products/$businessId/${product['codigo']}_main');
-        }
+  try {
+    final batch = FirebaseFirestore.instance.batch();
 
-        // Subir imágenes adicionales
-        List<String> additionalImageUrls = [];
-        for (var image in product['storeImgs'] ?? []) {
-          final url = await _uploadImage(image,
-              'products/$businessId/${product['codigo']}_additional_${DateTime.now().millisecondsSinceEpoch}');
-          additionalImageUrls.add(url);
-        }
-
-        // Crear documento del producto
-        final productRef = FirebaseFirestore.instance
-            .collection('businesses')
-            .doc(businessId)
-            .collection('products')
-            .doc();
-
-        batch.set(productRef, {
-          'codigo': product['codigo'],
-          'nombre': product['nombre'],
-          'precio': double.parse(product['precio']),
-          'cantidad': int.parse(product['cantidad']),
-          'imagen': mainImageUrl,
-          'storeImgs': additionalImageUrls,
-          'categoriaId': selectedCategoryId,
-          'fechaCreacion': FieldValue.serverTimestamp(),
-        });
+    for (var product in productsList) {
+      // Subir imagen principal
+      String? mainImageUrl;
+      if (product['imagen'] != null) {
+        mainImageUrl = await _uploadImage(
+          product['imagen'],
+          'products/$businessId/${product['codigo']}_main',
+        );
       }
 
-      await batch.commit();
-      // Limpiar formulario después de guardar
-      _resetForm();
+      // Subir imágenes adicionales
+      List<String> additionalImageUrls = [];
+      for (var image in product['storeImgs'] ?? []) {
+        final url = await _uploadImage(
+          image,
+          'products/$businessId/${product['codigo']}_additional_${DateTime.now().millisecondsSinceEpoch}',
+        );
+        additionalImageUrls.add(url);
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Productos guardados exitosamente')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar productos: $e')),
-      );
-    }
-  }
-
-  void _resetForm() {
-    setState(() {
-      // Resetear selecciones de dropdowns
-      selectedBusinessId = null;
-      selectedCategoryId = null;
-
-      // Limpiar lista de productos
-      productsList.clear();
-
-      // Resetear controladores de productos
-      productControllers = [
-        {
-          'codigo': TextEditingController(),
-          'nombre': TextEditingController(),
-          'precio': TextEditingController(),
-          'cantidad': TextEditingController(),
-          'imagen': null,
-          'storeImgs': [],
+      List<String> generateSearchKeywords(String name) {
+        final normalized = name.trim().toLowerCase();
+        List<String> keywords = [];
+        for (int i = 1; i <= normalized.length; i++) {
+          keywords.add(normalized.substring(0, i));
         }
-      ];
+        return keywords;
+      }
 
-      // Resetear índice de edición
-      editingIndex = null;
+      final nombre = product['nombre'];
+      final searchKeywords = generateSearchKeywords(nombre);
 
-      // Opcional: Si usas algún estado para validación
-      // _formKey.currentState?.reset();
+      final productData = {
+        'codigo': product['codigo'],
+        'nombre': nombre,
+        'searchKeywords': searchKeywords,
+        'precio': double.parse(product['precio']),
+        'cantidad': int.parse(product['cantidad']),
+        'imagen': mainImageUrl,
+        'storeImgs': additionalImageUrls,
+        'categoriaId': product['categoriaId'],
+        'negocioId': businessId,
+        'fechaCreacion': FieldValue.serverTimestamp(),
+      };
+
+      final productRef = FirebaseFirestore.instance.collection('productos').doc();
+      batch.set(productRef, productData);
+    }
+
+    await batch.commit();
+    _resetForm();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Productos guardados exitosamente')),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error al guardar productos: $e')),
+    );
+  } finally {
+    setState(() {
+      _isSaving = false;
     });
   }
+}
+
+void _resetForm() {
+  setState(() {
+    // Liberar controladores anteriores
+    for (var controller in productControllers) {
+      (controller['codigo'] as TextEditingController).dispose();
+      (controller['nombre'] as TextEditingController).dispose();
+      (controller['precio'] as TextEditingController).dispose();
+      (controller['cantidad'] as TextEditingController).dispose();
+      controller['storeImgs']?.clear(); // limpieza manual adicional
+    }
+
+    // Limpiar referencias
+    productControllers.clear();
+    productsList.clear();
+    selectedBusinessId = null;
+    selectedCategoryId = null;
+    editingIndex = null;
+
+    // Crear nuevo formulario limpio
+    productControllers = [
+      {
+        'codigo': TextEditingController(),
+        'nombre': TextEditingController(),
+        'precio': TextEditingController(),
+        'cantidad': TextEditingController(),
+        'imagen': null,
+        'storeImgs': [],
+      }
+    ];
+  });
+}
 
   Future<String> _uploadImage(File image, String path) async {
     final ref = FirebaseStorage.instance.ref().child(path);
@@ -440,112 +466,100 @@ Future<void> _pickImageAndSet(int productIndex, ImageSource source, bool isMainI
     );
   }
 
-  // Guardar producto actual
-// Guardar producto actual
-
   void _saveCurrentProduct() {
-    print('Guardando producto en la lista...');
+  print('Guardando producto en la lista...');
 
-    if (productControllers.isEmpty) {
-      print('Error: No hay productos en productControllers');
-      Get.snackbar('Error', 'Debes agregar al menos un producto');
-      return;
-    }
-
-    // Obtener el último producto ingresado en los controladores
-    final int lastIndex = productControllers.length - 1;
-    final TextEditingController codigoController =
-        productControllers[lastIndex]['codigo'];
-    final TextEditingController nombreController =
-        productControllers[lastIndex]['nombre'];
-    final TextEditingController precioController =
-        productControllers[lastIndex]['precio'];
-    final TextEditingController cantidadController =
-        productControllers[lastIndex]['cantidad'];
-    final dynamic imagen = productControllers[lastIndex]
-        ['imagen']; // Puede ser un File o String (URL)
-
-    // Extraer valores de los controladores
-    final String codigo = codigoController.text.trim();
-    final String nombre = nombreController.text.trim();
-    final String precio = precioController.text.trim();
-    final String cantidad = cantidadController.text.trim();
-
-    // Validar que los campos no estén vacíos
-    if (codigo.isEmpty ||
-        nombre.isEmpty ||
-        precio.isEmpty ||
-        cantidad.isEmpty) {
-      print('Error: Algunos campos están vacíos');
-      Get.snackbar('Error', 'Todos los campos son obligatorios');
-      return;
-    }
-
-    if (editingIndex != null) {
-      // Modo edición: Actualizar el producto existente
-      setState(() {
-        productsList[editingIndex!] = {
-          'codigo': codigo,
-          'nombre': nombre,
-          'precio': precio,
-          'cantidad': cantidad,
-          'imagen': imagen, // Puede ser null, File o URL
-        };
-        editingIndex = null; // Salir del modo edición
-      });
-
-      print('Producto actualizado correctamente:');
-    } else {
-      // Validar si el producto ya está en la lista (por código)
-      bool productoExistente =
-          productsList.any((product) => product['codigo'] == codigo);
-
-      if (productoExistente) {
-        print('Error: El producto con código $codigo ya existe en la lista');
-        Get.snackbar('Error', 'El código de producto ya está en la lista');
-        return;
-      }
-
-      // Agregar producto a la lista
-      setState(() {
-        productsList.add({
-          'codigo': codigo,
-          'nombre': nombre,
-          'precio': precio,
-          'cantidad': cantidad,
-          'imagen': imagen, // Puede ser null si no se ha seleccionado imagen
-        });
-      });
-
-      print('Producto agregado correctamente:');
-    }
-
-    // Imprimir la lista después de agregar o actualizar el producto
-    for (var product in productsList) {
-      print('Código: ${product['codigo']}');
-      print('Nombre: ${product['nombre']}');
-      print('Precio: ${product['precio']}');
-      print('Cantidad: ${product['cantidad']}');
-      print('Imagen: ${product['imagen']}');
-      print('-------------------------');
-    }
-
-    // Limpiar los campos después de guardar
-    _clearProductFields();
+  if (productControllers.isEmpty) {
+    print('Error: No hay productos en productControllers');
+    Get.snackbar('Error', 'Debes agregar al menos un producto');
+    return;
   }
 
-  void _clearProductFields() {
+  final int lastIndex = productControllers.length - 1;
+  final TextEditingController codigoController = productControllers[lastIndex]['codigo'];
+  final TextEditingController nombreController = productControllers[lastIndex]['nombre'];
+  final TextEditingController precioController = productControllers[lastIndex]['precio'];
+  final TextEditingController cantidadController = productControllers[lastIndex]['cantidad'];
+  final dynamic imagen = productControllers[lastIndex]['imagen'];
+  final List<dynamic> storeImgs = productControllers[lastIndex]['storeImgs'] ?? [];
+
+  final String codigo = codigoController.text.trim();
+  final String nombre = nombreController.text.trim();
+  final String precio = precioController.text.trim();
+  final String cantidad = cantidadController.text.trim();
+
+  if (codigo.isEmpty || nombre.isEmpty || precio.isEmpty || cantidad.isEmpty) {
+    print('Error: Algunos campos están vacíos');
+    Get.snackbar('Error', 'Todos los campos son obligatorios');
+    return;
+  }
+
+  if (selectedCategoryId == null) {
+    print('Error: Categoría no seleccionada');
+    Get.snackbar('Error', 'Debes seleccionar una categoría');
+    return;
+  }
+
+  Map<String, dynamic> newProduct = {
+    'codigo': codigo,
+    'nombre': nombre,
+    'precio': precio,
+    'cantidad': cantidad,
+    'imagen': imagen,
+    'storeImgs': storeImgs,
+    'categoriaId': selectedCategoryId,
+  };
+
+  if (editingIndex != null) {
     setState(() {
-      if (productControllers.isNotEmpty) {
-        productControllers.last['codigo'].clear();
-        productControllers.last['nombre'].clear();
-        productControllers.last['precio'].clear();
-        productControllers.last['cantidad'].clear();
-        productControllers.last['imagen'] = null;
-      }
+      productsList[editingIndex!] = newProduct;
+      editingIndex = null;
     });
-    print('Campos de producto limpiados');
+
+    print('Producto actualizado correctamente:');
+  } else {
+    bool productoExistente = productsList.any((product) => product['codigo'] == codigo);
+
+    if (productoExistente) {
+      print('Error: El producto con código $codigo ya existe en la lista');
+      Get.snackbar('Error', 'El código de producto ya está en la lista');
+      return;
+    }
+
+    setState(() {
+      productsList.add(newProduct);
+    });
+
+    print('Producto agregado correctamente:');
   }
+
+  for (var product in productsList) {
+    print('Código: ${product['codigo']}');
+    print('Nombre: ${product['nombre']}');
+    print('Precio: ${product['precio']}');
+    print('Cantidad: ${product['cantidad']}');
+    print('Imagen: ${product['imagen']}');
+    print('Imágenes adicionales: ${product['storeImgs']}');
+    print('Categoría ID: ${product['categoriaId']}');
+    print('-------------------------');
+  }
+
+  _clearProductFields();
+}
+
+void _clearProductFields() {
+  setState(() {
+    if (productControllers.isNotEmpty) {
+      productControllers.last['codigo'].clear();
+      productControllers.last['nombre'].clear();
+      productControllers.last['precio'].clear();
+      productControllers.last['cantidad'].clear();
+      productControllers.last['imagen'] = null;
+      productControllers.last['storeImgs'] = [];
+    }
+  });
+  print('Campos de producto limpiados');
+}
 
   void _deleteProduct(int index) {
     showDialog(
@@ -1169,28 +1183,31 @@ Future<void> _pickImageAndSet(int productIndex, ImageSource source, bool isMainI
                         ),
                       ),
                     ),
+                    SizedBox(height: 16.0),
                     TextField(
                       controller: productController['nombre'],
                       decoration: InputDecoration(labelText: 'Nombre'),
                     ),
+                    SizedBox(height: 16.0),
                     TextField(
                       controller: productController['precio'],
                       decoration: InputDecoration(labelText: 'Precio'),
                       keyboardType: TextInputType.number,
                     ),
+                    SizedBox(height: 16.0),
                     TextField(
                       controller: productController['cantidad'],
                       decoration: InputDecoration(labelText: 'Cantidad'),
                       keyboardType: TextInputType.number,
                     ),
-
+                    SizedBox(height: 16.0),
                     // Imagen principal
                     GestureDetector(
                       onTap: () => _pickImageProducts(index, isMainImage: true),
                       child: Container(
                         height: 100,
                         width: 100,
-                        color: Colors.grey[300],
+                        color: Colors.white,
                         child: productController['imagen'] == null
                             ? Icon(Icons.add_a_photo, size: 50)
                             : Image.file(productController['imagen'],
@@ -1202,7 +1219,7 @@ Future<void> _pickImageAndSet(int productIndex, ImageSource source, bool isMainI
                     SizedBox(height: 8),
 
                     // Imágenes adicionales (storeImgs)
-                    Text('Imágenes adicionales (opcional)',
+                    Text('Imágenes MoonStore (opcional)',
                         style: TextStyle(fontSize: 12)),
                     Wrap(
                       spacing: 8,
@@ -1277,9 +1294,31 @@ Future<void> _pickImageAndSet(int productIndex, ImageSource source, bool isMainI
               // Si todo está correcto, guardar los productos
               _addProducts(selectedBusinessId!);
             },
-            child: SizedBox(
-                width: double.infinity,
-                child: Center(child: Text('Guardar Productos'))),
+            child:SizedBox(
+  width: double.infinity,
+  child: ElevatedButton(
+    onPressed: _isSaving
+        ? null
+        : () {
+            if (selectedBusinessId == null) {
+              Get.snackbar('Error', 'Por favor selecciona un negocio');
+              return;
+            }
+            _addProducts(selectedBusinessId!);
+          },
+    child: _isSaving
+        ? SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          )
+        : Center(child: Text('Guardar Productos')),
+  ),
+),
+
           ),
         ],
       ),
@@ -1372,41 +1411,44 @@ Widget _buildProductTable() {
                               : Icon(Icons.image_not_supported),
                 ),
                 DataCell(
-                  (product['storeImgs'] as List?)?.isNotEmpty == true
-                      ? SizedBox(
-                          height: 50,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            shrinkWrap: true,
-                            children: (product['storeImgs'] as List).map((image) {
-                              return Padding(
-                                padding: EdgeInsets.only(right: 4),
-                                child: GestureDetector(
-                                  onTap: () => _showImageDialog(image),
-                                  child: image is File
-                                      ? Image.file(
-                                          image,
-                                          height: 40,
-                                          width: 40,
-                                          fit: BoxFit.cover,
-                                        )
-                                      : image is String
-                                          ? Image.network(
-                                              image,
-                                              height: 40,
-                                              width: 40,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  Icon(Icons.broken_image),
-                                            )
-                                          : Icon(Icons.image_not_supported),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        )
-                      : Text('Ninguna'),
-                ),
+  (product['storeImgs'] as List?)?.isNotEmpty == true
+      ? SizedBox(
+          height: 50,
+          width: 120, // Ajusta según el máximo ancho esperado
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: (product['storeImgs'] as List).map((image) {
+                return Padding(
+                  padding: EdgeInsets.only(right: 4),
+                  child: GestureDetector(
+                    onTap: () => _showImageDialog(image),
+                    child: image is File
+                        ? Image.file(
+                            image,
+                            height: 40,
+                            width: 40,
+                            fit: BoxFit.cover,
+                          )
+                        : image is String
+                            ? Image.network(
+                                image,
+                                height: 40,
+                                width: 40,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    Icon(Icons.broken_image),
+                              )
+                            : Icon(Icons.image_not_supported),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        )
+      : Text('Ninguna'),
+),
+
                 DataCell(
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1573,41 +1615,67 @@ void _showImageDialog(dynamic image) {
           );
         }
 
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              DataColumn(label: Text('Logo')),
-              DataColumn(label: Text('Nombre Empresa')),
-              DataColumn(label: Text('Dueño')),
-              DataColumn(label: Text('Teléfono')),
+       return SingleChildScrollView(
+  scrollDirection: Axis.horizontal,
+  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+  child: Row(
+    children: businesses.map((business) {
+      return GestureDetector(
+        onTap: () async {
+          final products = await _fetchProductsForBusiness(business['id']);
+          _showProductsDialog(products);
+        },
+        child: Container(
+          width: 200,
+          margin: EdgeInsets.only(right: 12),
+          padding: EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              )
             ],
-            rows: businesses.map((business) {
-              return DataRow(
-                cells: [
-                  DataCell(
-                    business['logo'] != null
-                        ? Image.network(
-                            business['logo'],
-                            height: 50,
-                            width: 50,
-                            fit: BoxFit.cover,
-                          )
-                        : Icon(Icons.business, size: 50),
-                  ),
-                  DataCell(Text(business['nombreEmpresa'])),
-                  DataCell(Text(business['nombreDueno'])),
-                  DataCell(Text(business['telefono'])),
-                ],
-                onSelectChanged: (selected) async {
-                  final products =
-                      await _fetchProductsForBusiness(business['id']);
-                  _showProductsDialog(products);
-                },
-              );
-            }).toList(),
           ),
-        );
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              business['logo'] != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.network(
+                        business['logo'],
+                        height: 80,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  : Container(
+                      height: 80,
+                      width: double.infinity,
+                      color: Colors.grey.shade300,
+                      child: Icon(Icons.business, size: 40, color: Colors.grey),
+                    ),
+              SizedBox(height: 8),
+              Text(
+                business['nombreEmpresa'],
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              SizedBox(height: 4),
+              Text('Dueño: ${business['nombreDueno']}'),
+              Text('Tel: ${business['telefono']}'),
+            ],
+          ),
+        ),
+      );
+    }).toList(),
+  ),
+);
+
       },
     );
   }
@@ -1626,115 +1694,6 @@ void _showImageDialog(dynamic image) {
     }
   }
 
-  // Método para mostrar los productos del negocio seleccionado
-  Widget _buildProductsForBusiness() {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _fetchProductsForBusiness(selectedBusinessId!),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text('Error: ${snapshot.error}');
-        }
-        if (!snapshot.hasData) {
-          return CircularProgressIndicator();
-        }
 
-        List<Map<String, dynamic>> products = snapshot.data!;
-
-        return Column(
-          children: [
-            DataTable(
-              columns: [
-                DataColumn(label: Text('Código')),
-                DataColumn(label: Text('Nombre')),
-                DataColumn(label: Text('Precio')),
-                DataColumn(label: Text('Cantidad')),
-              ],
-              rows: products.map((product) {
-                return DataRow(
-                    cells: [
-                      DataCell(Text(product['codigo'])),
-                      DataCell(Text(product['nombre'])),
-                      DataCell(Text(product['precio'].toString())),
-                      DataCell(Text(product['cantidad'].toString())),
-                    ],
-                    onSelectChanged: (selected) {
-                      setState(() {
-                        selectedProduct =
-                            product; // Guardar el producto seleccionado
-                        showProductDetails =
-                            true; // Mostrar detalles del producto
-                      });
-                    });
-              }).toList(),
-            ),
-            if (showProductDetails &&
-                selectedProduct != null) // Mostrar detalles del producto
-              Container(
-                padding: EdgeInsets.all(16.0),
-                margin: EdgeInsets.only(top: 16.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8.0),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.grey, blurRadius: 4.0, spreadRadius: 2.0),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Detalles del Producto',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8.0),
-                    Text('Código: ${selectedProduct!['codigo']}'),
-                    Text('Nombre: ${selectedProduct!['nombre']}'),
-                    Text('Precio: \$${selectedProduct!['precio']}'),
-                    Text('Cantidad: ${selectedProduct!['cantidad']}'),
-                  ],
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  // Método para obtener productos del negocio
-
-  // Método para mostrar el diálogo con productos del negocio
-
-  // Método para construir la tabla de productos
-  Widget _buildProductsTable() {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _fetchProductsForBusiness(selectedBusinessId!),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text('Error: ${snapshot.error}');
-        }
-        if (!snapshot.hasData) {
-          return CircularProgressIndicator();
-        }
-
-        List<Map<String, dynamic>> products = snapshot.data!;
-
-        return DataTable(
-          columns: [
-            DataColumn(label: Text('Código')),
-            DataColumn(label: Text('Nombre')),
-            DataColumn(label: Text('Precio')),
-            DataColumn(label: Text('Cantidad')),
-          ],
-          rows: products.map((product) {
-            return DataRow(cells: [
-              DataCell(Text(product['codigo'])),
-              DataCell(Text(product['nombre'])),
-              DataCell(Text(product['precio'].toString())),
-              DataCell(Text(product['cantidad'].toString())),
-            ]);
-          }).toList(),
-        );
-      },
-    );
-  }
+  
 }
