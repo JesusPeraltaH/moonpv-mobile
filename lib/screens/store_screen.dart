@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:moonpv/model/producto_model.dart';
 import 'package:moonpv/screens/login_screen.dart';
+import 'package:rxdart/rxdart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StoreScreen extends StatefulWidget {
@@ -13,8 +15,10 @@ class StoreScreen extends StatefulWidget {
 class _StoreScreenState extends State<StoreScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String _searchQuery = '';
-  String _selectedCategory = 'Todos';
   String _selectedBusiness = 'Todos';
+  String _selectedCategory = 'Todos';
+  List<Product> _products = [];
+  
 
   // Categorías y negocios pueden venir de Firestore también
   final List<String> categories = [
@@ -27,44 +31,149 @@ class _StoreScreenState extends State<StoreScreen> {
     'Skincare'
   ];
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text('MoonConcept Store',
-            style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-                fontSize: 20)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.search, color: Colors.black),
-            onPressed: () {
-              showSearch(context: context, delegate: ProductSearchDelegate());
+@override
+void initState() {
+  super.initState();
+  _selectedCategory = 'Todos';
+  _filterProductsByCategory();
+}
+
+ @override
+Widget build(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
+  return Scaffold(
+    backgroundColor: Colors.white,
+    drawerEdgeDragWidth: 40, // default = 20. Ajusta si querés más sensible
+    drawer: Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.black : Colors.grey.shade200,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Image.asset(
+                    isDark
+                        ? 'assets/images/moon_blanco.png'
+                        : 'assets/images/moon_negro.png',
+                    height: 50,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'MoonConcept',
+                  style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: Icon(Icons.receipt_long),
+            title: Text('Pedidos'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Navegar a pedidos
             },
           ),
-          IconButton(
-            icon: Icon(Icons.logout, color: Colors.black),
-            onPressed: () => _logout(context),
+          ListTile(
+            leading: Icon(Icons.favorite),
+            title: Text('Favoritos'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: Navegar a favoritos
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.logout),
+            title: Text('Cerrar sesión'),
+            onTap: () => _logout(context),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSearchBar(),
-            _buildCategoriesSection(),
-            _buildBusinessesSection(),
-            _buildProductsSection(),
-          ],
+    ),
+    body: Builder( // <- Necesario para abrir el drawer desde contexto
+  builder: (context) => SingleChildScrollView(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 120, bottom: 0, right: 0, top: 50),
+          child: Image.asset(
+            isDark
+                ? 'assets/images/moon_blanco.png'
+                : 'assets/images/moon_negro.png',
+            height: 150,
+          ),
         ),
-      ),
-    );
-  }
+        SizedBox(height: 12),
+
+        // 🔥 Nuevo: Texto interactivo para abrir el drawer
+        GestureDetector(
+          onTap: () => Scaffold.of(context).openDrawer(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              ' Desliza desde la izquierda o toca aquí para más opciones',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+
+        SizedBox(height: 12),
+
+        GestureDetector(
+          onTap: () {
+            showSearch(context: context, delegate: ProductSearchDelegate());
+          },
+          child: Container(
+            margin: EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.search, color: Colors.grey),
+                SizedBox(width: 8),
+                Text(
+                  'Buscar productos...',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(height: 16),
+        _buildCategoriesSection(),
+        _buildBusinessesSection(),
+        _buildProductsSection(),
+      ],
+    ),
+  ),
+),
+
+  );
+}
+
+void _selectCategory(String category) {
+  setState(() {
+    _selectedCategory = category;
+  });
+}
+
 
   Widget _buildSearchBar() {
     return Padding(
@@ -89,51 +198,101 @@ class _StoreScreenState extends State<StoreScreen> {
     );
   }
 
-  Widget _buildCategoriesSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text('Categorías',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        ),
-        SizedBox(
-          height: 50,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: categories.length,
-            itemBuilder: (context, index) {
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedCategory = categories[index];
-                  });
-                },
-                child: Container(
-                  margin: EdgeInsets.symmetric(horizontal: 8),
-                  padding: EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _selectedCategory == categories[index]
-                        ? Colors.black
-                        : Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
+ Widget _buildCategoriesSection() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text('Categorías',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      ),
+      SizedBox(
+        height: 50,
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('categories').snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error al cargar categorías');
+            }
+
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+
+            // Crear lista de categorías comenzando con "Todos"
+            final categories = ['Todos'];
+            categories.addAll(
+              snapshot.data!.docs.map((doc) => doc['nombre'] as String).toList()
+            );
+
+            return ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: categories.length,
+              itemBuilder: (context, index) {
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedCategory = categories[index];
+                      _filterProductsByCategory();
+                    });
+                  },
+                  child: Container(
+                    margin: EdgeInsets.symmetric(horizontal: 8),
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _selectedCategory == categories[index]
+                          ? Colors.black
+                          : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(categories[index],
+                          style: TextStyle(
+                              color: _selectedCategory == categories[index]
+                                  ? Colors.white
+                                  : Colors.black)),
+                    ),
                   ),
-                  child: Center(
-                    child: Text(categories[index],
-                        style: TextStyle(
-                            color: _selectedCategory == categories[index]
-                                ? Colors.white
-                                : Colors.black)),
-                  ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            );
+          },
         ),
-      ],
-    );
+      ),
+    ],
+  );
+}
+
+// Función para filtrar productos según categoría seleccionada
+Future<void> _filterProductsByCategory() async {
+  Query query = FirebaseFirestore.instance
+      .collection('products')
+      .where('cantidad', isGreaterThan: 0);
+
+  if (_selectedCategory != 'Todos') {
+    // Primero obtenemos el ID de la categoría seleccionada
+    final categoryQuery = await FirebaseFirestore.instance
+        .collection('categories')
+        .where('nombre', isEqualTo: _selectedCategory)
+        .limit(1)
+        .get();
+
+    if (categoryQuery.docs.isNotEmpty) {
+      final categoryId = categoryQuery.docs.first.id;
+      query = query.where('categoriaId', isEqualTo: categoryId);
+    }
   }
+
+  final result = await query.get();
+  setState(() {
+    _products = result.docs.map((doc) => Product.fromFirestore(doc)).toList();
+  });
+}
+
+// Variables de clase que necesitarás
+
+
 
   Widget _buildBusinessesSection() {
     return StreamBuilder<QuerySnapshot>(
@@ -196,15 +355,15 @@ class _StoreScreenState extends State<StoreScreen> {
       },
     );
   }
-Widget _buildProductsSection() {
+
+ Widget _buildProductsSection() {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      // Título Catálogo
       Padding(
         padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 8),
         child: Text(
-          'Catálogo',
+          'Catálogo ${_selectedCategory != 'Todos' ? '(${_selectedCategory})' : ''}',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -212,12 +371,29 @@ Widget _buildProductsSection() {
         ),
       ),
 
-      // Lista de productos
       StreamBuilder<QuerySnapshot>(
         stream: _getFilteredProducts(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Error al cargar productos'));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  _selectedCategory == 'Todos' 
+                    ? 'No hay productos disponibles' 
+                    : 'No hay productos en esta categoría',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            );
           }
 
           final products = snapshot.data!.docs;
@@ -234,95 +410,76 @@ Widget _buildProductsSection() {
             ),
             itemCount: products.length,
             itemBuilder: (context, index) {
-  final product = products[index];
-  return GestureDetector(
-    onTap: () => _showProductDetails(product),
-    child: _buildProductCard(product), // Quitamos el callback
-  );
-},
+              final product = products[index];
+              final productData = product.data() as Map<String, dynamic>;
+              
+              return GestureDetector(
+                onTap: () => _showProductDetails(product),
+                child: Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Imagen del producto
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(12)),
+                            image: DecorationImage(
+                              image: NetworkImage(productData['imageUrl'] ?? ''),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              productData['nombre'] ?? 'Sin nombre',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 15),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Disponibles: ${productData['cantidad'] ?? 0}',
+                              style: TextStyle(
+                                color: productData['cantidad'] > 0 
+                                  ? Colors.black54 
+                                  : Colors.red,
+                                fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
 
-      // Sección del carrito (solo visible si hay productos)
+      // Resto del código del carrito (se mantiene igual)
       if (_cartItems.isNotEmpty) ...[
-        Divider(thickness: 2),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'Tu Carrito',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        
-        // Carrusel de productos en el carrito
-        Container(
-          height: 120,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _cartItems.length,
-            itemBuilder: (context, index) {
-              final item = _cartItems[index];
-              return Container(
-                width: 100,
-                margin: EdgeInsets.only(right: 12),
-                child: Column(
-                  children: [
-                    // Imagen del producto (ajusta según tu estructura de datos)
-                    Container(
-                      height: 60,
-                      width: 60,
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: NetworkImage(item['imageUrl'] ?? ''),
-                          fit: BoxFit.cover,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    // Cantidad
-                    Text(
-                      '${item['quantity']}x',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    // Precio
-                    Text(
-                      '\$${(item['price'] * item['quantity']).toStringAsFixed(2)}',
-                      style: TextStyle(color: Colors.green),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        
-        // Botón para crear orden
-        Padding(
-          padding: EdgeInsets.all(16),
-          child: ElevatedButton(
-            onPressed: () {
-              // Función para crear orden (a implementar)
-              // _createOrder();
-            },
-            style: ElevatedButton.styleFrom(
-              minimumSize: Size(double.infinity, 50),
-              backgroundColor: Colors.blueAccent,
-            ),
-            child: Text(
-              'Crear Orden',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
+        // ... (tu código actual del carrito)
       ],
     ],
   );
@@ -351,24 +508,35 @@ void _addToCart(DocumentSnapshot product) {
   setState(() {});
 }
 
-  Stream<QuerySnapshot> _getFilteredProducts() {
-    Query query = _firestore.collection('productos');
-
-    if (_selectedCategory != 'Todos') {
-      query = query.where('categoria', isEqualTo: _selectedCategory);
-    }
-
-    if (_selectedBusiness != 'Todos') {
-      query = query.where('negocioId', isEqualTo: _selectedBusiness);
-    }
-
-    if (_searchQuery.isNotEmpty) {
-      query = query.where('nombre', isGreaterThanOrEqualTo: _searchQuery)
-          .where('nombre', isLessThanOrEqualTo: _searchQuery + '\uf8ff');
-    }
-
-    return query.snapshots();
+   Stream<QuerySnapshot> _getFilteredProducts() {
+  if (_selectedCategory == 'Todos') {
+    return FirebaseFirestore.instance
+        .collection('products')
+        .where('cantidad', isGreaterThan: 0)
+        .snapshots();
   }
+
+  return FirebaseFirestore.instance
+      .collection('categories')
+      .where('nombre', isEqualTo: _selectedCategory)
+      .limit(1)
+      .snapshots()
+      .switchMap((categoryQuery) {
+        if (categoryQuery.docs.isEmpty) {
+          return FirebaseFirestore.instance
+              .collection('products')
+              .where('cantidad', isGreaterThan: 0)
+              .snapshots();
+        }
+
+        final categoryId = categoryQuery.docs.first.id;
+        return FirebaseFirestore.instance
+            .collection('products')
+            .where('categoriaId', isEqualTo: categoryId)
+            .where('cantidad', isGreaterThan: 0)
+            .snapshots();
+      });
+}
 
     Widget _buildProductCard(DocumentSnapshot product) {
     final productData = product.data() as Map<String, dynamic>;

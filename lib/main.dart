@@ -15,17 +15,24 @@ import 'firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Configuración del splash screen nativo (Android/iOS)
-  if (Platform.isAndroid) {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-    ));
+  try {
+    print("Inicializando Firebase..."); // Debug
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    print("Firebase inicializado correctamente"); // Debug
+    
+    runApp(const MyApp());
+  } catch (e) {
+    print("ERROR CRÍTICO: $e"); // Verás esto en la consola si hay fallos
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Text("Error al iniciar: $e", style: TextStyle(color: Colors.red)),
+          ),
+        ),
+      ),
+    );
   }
-
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await dotenv.load(fileName: ".env"); // Si usas dotenv
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -38,45 +45,46 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ZaraTheme.lightTheme,
       darkTheme: ZaraTheme.darkTheme,
-      home: SplashWrapper(), // Widget que maneja el splash
+      home: IntermidScreen(), // Widget que maneja el splash
     );
   }
 }
 
-class SplashWrapper extends StatefulWidget {
-  const SplashWrapper({Key? key}) : super(key: key);
+// class SplashWrapper extends StatefulWidget {
+//   const SplashWrapper({Key? key}) : super(key: key);
 
-  @override
-  _SplashWrapperState createState() => _SplashWrapperState();
-}
+//   @override
+//   _SplashWrapperState createState() => _SplashWrapperState();
+// }
 
-class _SplashWrapperState extends State<SplashWrapper> {
-  @override
-  void initState() {
-    super.initState();
-    _navigateToNext();
-  }
+// class _SplashWrapperState extends State<SplashWrapper> {
+//   @override
+//   void initState() {
+//     super.initState();
+//     _navigateToNext();
+//   }
 
-  void _navigateToNext() async {
-    // Espera 2 segundos o hasta que Firebase esté listo
-    await Future.delayed(const Duration(seconds: 2));
+//   void _navigateToNext() async {
+//     // Espera 2 segundos o hasta que Firebase esté listo
+//     await Future.delayed(const Duration(seconds: 2));
     
-    Get.off(() => IntermidScreen()); // Navegación con GetX
-  }
+//     Get.off(() => IntermidScreen()); // Navegación con GetX
+//   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        color: Colors.white, // Mismo color que el splash nativo
-        child: Center(
-          child: Image.asset(
-            'assets/icon/app_icon.png', // Tu logo
-            width: 200,
-            height: 200,
-          ),
-        ),
-      ),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       body: Container(
+//         color: Colors.white, // Mismo color que el splash nativo
+//         child: Center(
+//           child: Image.asset(
+//             'assets/icon/app_icon.png', // Tu logo
+//             width: 200,
+//             height: 200,
+//             errorBuilder: (context, error, stackTrace) => CircularProgressIndicator(),
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }

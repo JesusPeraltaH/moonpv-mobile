@@ -23,22 +23,27 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false; // Estado de carga
   bool _obscurePassword = true; // Control de visibilidad de la contraseña
+  
 
   @override
 Widget build(BuildContext context) {
   // Determinar el color de los íconos según el tema
   Color iconColor = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
-
+final isDark = Theme.of(context).brightness == Brightness.dark;
   return Scaffold(
-    appBar: AppBar(
-      title: Text("Login", style: TextStyle(color: Colors.white)),
-      backgroundColor: Theme.of(context).colorScheme.primary,
-    ),
+    // appBar: AppBar(
+    //   title: Text("Login", style: TextStyle(color: Colors.white)),
+    //   backgroundColor: Theme.of(context).colorScheme.primary,
+    // ),
     body: Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Image.asset(
+        isDark ? 'assets/images/moon_blanco.png' : 'assets/images/moon_negro.png',
+        height: 200,
+      ),
           TextField(
             controller: _emailController,
             decoration: InputDecoration(
