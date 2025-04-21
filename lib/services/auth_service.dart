@@ -22,6 +22,25 @@ class AuthService {
     return await FirebaseAuth.instance.signInWithCredential(credential);
   }
 
+    Future<UserCredential?> createUserWithEmailAndPassword(
+      String email, String password) async {
+    try {
+      final UserCredential userCredential =
+          await _firebaseAuth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+      return userCredential;
+    } on FirebaseAuthException catch (e) {
+      print("Firebase Auth Error creating user: $e");
+      // Puedes lanzar la excepción nuevamente para que el widget la maneje
+      throw e;
+    } catch (e) {
+      print("Generic Error creating user: $e");
+      throw e;
+    }
+  }
+
   Future<void> sigOut() async {
     return await _firebaseAuth.signOut();
   }

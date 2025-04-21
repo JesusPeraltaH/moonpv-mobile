@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:moonpv/model/producto_model.dart';
 import 'package:moonpv/screens/login_screen.dart';
-import 'package:rxdart/rxdart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StoreScreen extends StatefulWidget {
@@ -18,34 +19,45 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  String _searchQuery = '';
+  
   String _selectedBusiness = 'Todos';
   String _selectedCategory = 'Todos';
+  String? _selectedCategoryId = 'Todos';
   List<Product> _products = [];
   final _debouncer = Debouncer(milliseconds: 500);
+  List<String> _recentSearches = [];
+  String? _lastSearchQuery;
+  List<DocumentSnapshot> _displayedProducts = [];
 
   // Categorías y negocios pueden venir de Firestore también
-  final List<String> categories = [
-    'Todos',
-    'Joyeria',
-    'Suplementos',
-    'Ropa',
-    'Tenis',
-    'Maquillaje',
-    'Skincare'
-  ];
-
+  
   @override
   void initState() {
     super.initState();
     _selectedCategory = 'Todos';
     _filterProductsByCategory();
+    _loadInitialProducts();
   }
 
   @override
   void dispose() {
     _debouncer._timer?.cancel();
     super.dispose();
+  }
+
+  Query<Map<String, dynamic>> _getProductQuery() {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('productos')
+        .where('cantidad', isGreaterThan: 0);
+
+    if (_selectedCategoryId != 'Todos' && _selectedCategoryId != null) {
+      print('Filtrando por categoriaId: $_selectedCategoryId');
+      query = query.where('categoriaId', isEqualTo: _selectedCategoryId);
+    } else {
+      print('Mostrando todos los productos');
+    }
+    print('Consulta base generada: ${query.parameters}'); // Imprime los parámetros de la consulta
+    return query;
   }
 
   @override
@@ -112,8 +124,7 @@ class _StoreScreenState extends State<StoreScreen> {
       ),
       body: Builder(
         // <- Necesario para abrir el drawer desde contexto
-        builder: (context) => SingleChildScrollView(
-          child: Column(
+        builder: (context) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
@@ -148,7 +159,7 @@ class _StoreScreenState extends State<StoreScreen> {
               GestureDetector(
                 onTap: () {
                   showSearch(
-                      context: context, delegate: ProductSearchDelegate());
+                      context: context, delegate: ProductSearchDelegate(onProductTap: _showProductDetails));
                 },
                 child: Container(
                   margin: EdgeInsets.symmetric(horizontal: 16),
@@ -172,47 +183,25 @@ class _StoreScreenState extends State<StoreScreen> {
               SizedBox(height: 16),
               _buildCategoriesSection(),
               _buildBusinessesSection(),
-              _buildProductsSection(),
+              //_buildProductsSection(),
+              //_buildProductsSection(),
+               Expanded(
+            child: ProductListSection(
+              selectedCategory: _selectedCategory,
+              showProductDetails: _showProductDetails,
+              getProductQuery: _getProductQuery,
+            ),
+          ),
+            _buildRecentSearches(),
+
             ],
           ),
-        ),
+        
       ),
     );
   }
 
-  void _selectCategory(String category) {
-    setState(() {
-      _selectedCategory = category;
-    });
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: TextField(
-        decoration: InputDecoration(
-          hintText: 'Buscar productos...',
-          prefixIcon: Icon(Icons.search),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          filled: true,
-          fillColor: Colors.grey[100],
-        ),
-        onChanged: (value) {
-          _debouncer.run(() {
-            if (mounted) {
-              setState(() {
-                _searchQuery = value.trim();
-              });
-            }
-          });
-        },
-      ),
-    );
-  }
-
+  
   Widget _buildCategoriesSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,7 +227,8 @@ class _StoreScreenState extends State<StoreScreen> {
 
               // Crear lista de categorías comenzando con "Todos"
               final categories = ['Todos'];
-              categories.addAll(snapshot.data!.docs
+              final categoryDocs = snapshot.data!.docs;
+              categories.addAll(categoryDocs
                   .map((doc) => doc['nombre'] as String)
                   .toList());
 
@@ -246,26 +236,36 @@ class _StoreScreenState extends State<StoreScreen> {
                 scrollDirection: Axis.horizontal,
                 itemCount: categories.length,
                 itemBuilder: (context, index) {
+                  final categoryName = categories[index];
+                  String? categoryId;
+                  if (index > 0) {
+                    categoryId = categoryDocs[index - 1].id; // Obtener el ID del documento
+                  }
+
                   return GestureDetector(
                     onTap: () {
                       setState(() {
-                        _selectedCategory = categories[index];
-                        _filterProductsByCategory();
+                        _selectedCategoryId = categoryId; // Actualizar _selectedCategoryId con el ID
+                        print('Categoría seleccionada: $categoryName, ID: $_selectedCategoryId');
                       });
                     },
                     child: Container(
                       margin: EdgeInsets.symmetric(horizontal: 8),
                       padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _selectedCategory == categories[index]
+                        color: _selectedCategoryId == categoryId ||
+                                (_selectedCategoryId == 'Todos' &&
+                                    categoryName == 'Todos')
                             ? Colors.black
                             : Colors.grey[200],
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
-                        child: Text(categories[index],
+                        child: Text(categoryName,
                             style: TextStyle(
-                                color: _selectedCategory == categories[index]
+                                color: _selectedCategoryId == categoryId ||
+                                        (_selectedCategoryId == 'Todos' &&
+                                            categoryName == 'Todos')
                                     ? Colors.white
                                     : Colors.black)),
                       ),
@@ -309,355 +309,319 @@ class _StoreScreenState extends State<StoreScreen> {
 // Variables de clase que necesitarás
 
   Widget _buildBusinessesSection() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestore.collection('negocios').snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return SizedBox(
-            height: 120,
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        final businesses = snapshot.data!.docs;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('Negocios',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            SizedBox(
-              height: 60,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: businesses.length,
-                itemBuilder: (context, index) {
-                  final business = businesses[index];
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedBusiness = business.id;
-                      });
-                    },
-                    child: Container(
-                      width: 60,
-                      margin: EdgeInsets.symmetric(horizontal: 8),
-                      child: Column(
-                        children: [
-                          CircleAvatar(
-                            radius: 30,
-                            backgroundImage: CachedNetworkImageProvider(
-                                business['logo'] ?? ''),
-                          ),
-                          //SizedBox(height: 8),
-                          // Text(business['nombreEmpresa'] ?? '',
-                          //     textAlign: TextAlign.center,
-                          //     maxLines: 2,
-                          //     overflow: TextOverflow.ellipsis),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+  return StreamBuilder<QuerySnapshot>(
+    stream: _firestore.collection('negocios').snapshots(),
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        return SizedBox(
+          height: 120,
+          child: Center(child: CircularProgressIndicator()),
         );
-      },
-    );
-  }
+      }
 
-  Widget _buildProductsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 8),
-          child: Text(
-            'Catálogo ${_selectedCategory != 'Todos' ? '(${_selectedCategory})' : ''}',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+      final businesses = snapshot.data!.docs;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text('Brands',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
-        ),
-        StreamBuilder<QuerySnapshot>(
-          stream: _getFilteredProducts(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
-            }
-
-            if (snapshot.hasError) {
-              return Center(child: Text('Error al cargar productos'));
-            }
-
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    _selectedCategory == 'Todos'
-                        ? 'No hay productos disponibles'
-                        : 'No hay productos en esta categoría',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                ),
-              );
-            }
-
-            final products = snapshot.data!.docs;
-
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.all(16),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 0.7,
-              ),
-              itemCount: products.length,
+          SizedBox(
+            height: 60,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: businesses.length,
               itemBuilder: (context, index) {
-                final product = products[index];
-                final productData = product.data() as Map<String, dynamic>;
-                final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
-                final hasImages =
-                    (productData['imageUrl']?.isNotEmpty == true) ||
-                        storeImgs.isNotEmpty;
+                final business = businesses[index].data() as Map<String, dynamic>;
+                final logoUrl = business['logo'] as String?;
+                final isDarkMode = Get.isDarkMode;
+                final defaultImage = isDarkMode
+                    ? AssetImage('assets/images/moon_blanco.png') as ImageProvider<Object>?
+                    : AssetImage('assets/images/moon_negro.png') as ImageProvider<Object>?;
 
                 return GestureDetector(
-                  onTap: () => _showProductDetails(product),
-                  child: Card(
-                    elevation: 2,
+                  onTap: () {
+                    setState(() {
+                      _selectedBusiness = businesses[index].id;
+                    });
+                  },
+                  child: Container(
+                    width: 60,
+                    margin: EdgeInsets.symmetric(horizontal: 8),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Contenedor de imágenes
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).cardColor,
-                            ),
-                            child: hasImages
-                                ? _buildProductImage(productData, storeImgs)
-                                : _buildThemeAwarePlaceholder(context),
-                          ),
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundImage: logoUrl != null && logoUrl.isNotEmpty
+                              ? CachedNetworkImageProvider(logoUrl)
+                              : defaultImage,
+                          onBackgroundImageError: (exception, stackTrace) =>
+                              print('Error loading image: $exception'),
                         ),
-                        Padding(
-                          padding: EdgeInsets.all(8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                productData['nombre'] ?? 'Sin nombre',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
-                                style: TextStyle(
-                                    color: Colors.green, fontSize: 15),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Disponibles: ${productData['cantidad'] ?? 0}',
-                                style: TextStyle(
-                                    color: productData['cantidad'] > 0
-                                        ? Colors.black54
-                                        : Colors.red,
-                                    fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        ),
+                        //SizedBox(height: 8),
+                        // Text(business['nombreEmpresa'] ?? '',
+                        //   textAlign: TextAlign.center,
+                        //   maxLines: 2,
+                        //   overflow: TextOverflow.ellipsis),
                       ],
                     ),
                   ),
                 );
               },
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProductImage(
-      Map<String, dynamic> productData, List<dynamic> storeImgs) {
-    final mainImage = productData['imageUrl']?.isNotEmpty == true
-        ? productData['imageUrl']
-        : storeImgs.isNotEmpty
-            ? storeImgs[0]
-            : null;
-
-    return Stack(
-      children: [
-        if (mainImage != null)
-          Container(
-            decoration: BoxDecoration(
-              image: DecorationImage(
-                image: NetworkImage(mainImage),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-        if (storeImgs.isNotEmpty)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              padding: EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-              ),
-              child: Text(
-                '${storeImgs.length + (productData['imageUrl']?.isNotEmpty == true ? 1 : 0)}',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildThemeAwarePlaceholder(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final placeholderImage = isDarkMode
-        ? 'assets/images/moon_solo_blanco.png'
-        : 'assets/images/moon_solo_negro.png';
-
-    return Center(
-      child: Image.asset(
-        placeholderImage,
-        width: 100,
-        height: 100,
-        fit: BoxFit.contain,
-      ),
-    );
-  }
-
-  List<Map<String, dynamic>> _cartItems = [];
-
-  void _addToCart(DocumentSnapshot product) {
-    final productData = product.data() as Map<String, dynamic>;
-    final productId = product.id;
-
-    final existingItemIndex =
-        _cartItems.indexWhere((item) => item['id'] == productId);
-
-    if (existingItemIndex >= 0) {
-      _cartItems[existingItemIndex]['quantity'] += 1;
-    } else {
-      _cartItems.add({
-        'id': productId,
-        'name': productData['nombre'],
-        'price': productData['precio'],
-        'imageUrl': productData['imagen'],
-        'quantity': 1,
-      });
-    }
-
-    setState(() {});
-  }
-
-  Stream<QuerySnapshot> _getFilteredProducts() {
-    // Consulta base para productos con cantidad > 0
-    Query baseQuery = FirebaseFirestore.instance
-        .collection('productos')
-        .where('cantidad', isGreaterThan: 0);
-
-    // 1. Manejo de búsqueda por keywords si hay query
-    if (_searchQuery.isNotEmpty) {
-      baseQuery = baseQuery.where(
-        'searchKeywords',
-        arrayContains: _searchQuery.toLowerCase(),
-      );
-    }
-
-    // 2. Manejo de categorías
-    if (_selectedCategory != 'Todos') {
-      return FirebaseFirestore.instance
-          .collection('categories')
-          .where('nombre', isEqualTo: _selectedCategory)
-          .limit(1)
-          .snapshots()
-          .switchMap((categoryQuery) {
-        if (categoryQuery.docs.isEmpty) return baseQuery.snapshots();
-
-        final categoryId = categoryQuery.docs.first.id;
-        return baseQuery
-            .where('categoriaId', isEqualTo: categoryId)
-            .snapshots();
-      });
-    }
-
-    // 3. Retornar consulta simple si no hay filtros especiales
-    return baseQuery.snapshots();
-  }
-
-  Widget _buildProductCard(DocumentSnapshot product) {
-    final productData = product.data() as Map<String, dynamic>;
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Imagen del producto con loader
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-              child: CachedNetworkImage(
-                imageUrl: productData['imagen'],
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Center(
-                  child: CircularProgressIndicator(),
-                ),
-                errorWidget: (context, url, error) => Icon(Icons.error),
-              ),
-            ),
-          ),
-          // Información del producto
-          Padding(
-            padding: EdgeInsets.all(8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  productData['nombre'],
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  '\$${productData['precio'].toStringAsFixed(2)}',
-                  style: TextStyle(color: Colors.green),
-                ),
-              ],
             ),
           ),
         ],
-      ),
-    );
+      );
+    },
+  );
+}
+
+Widget _buildRecentSearches() {
+  if (_recentSearches.isEmpty) {
+    return SizedBox.shrink();
+  }
+  return Container(
+    padding: EdgeInsets.all(8),
+    height: 60,
+    child: ListView.builder(
+      scrollDirection: Axis.horizontal,
+      itemCount: _recentSearches.length,
+      itemBuilder: (context, index) {
+        final search = _recentSearches[index];
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: InkWell( // Envuelve el Chip con InkWell
+            onTap: () {
+              _searchProducts(search);
+            },
+            child: Chip(
+              label: Text(search),
+              onDeleted: () {
+                setState(() {
+                  _recentSearches.removeAt(index);
+                });
+              },
+              deleteIcon: Icon(Icons.close, size: 18),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+//  Widget _buildProductsSection() {
+//   return Column(
+//     crossAxisAlignment: CrossAxisAlignment.start,
+//     children: [
+//       Padding(
+//         padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 8),
+//         child: Text(
+//           'Catálogo ${_selectedCategory != 'Todos' ? '(${_selectedCategory})' : ''}',
+//           style: TextStyle(
+//             fontSize: 24,
+//             fontWeight: FontWeight.bold,
+//           ),
+//         ),
+//       ),
+//       StreamBuilder<QuerySnapshot>(
+//         stream: _getFilteredProducts(),
+//         builder: (context, snapshot) {
+//           if (snapshot.connectionState == ConnectionState.waiting) {
+//             return Center(child: CircularProgressIndicator());
+//           }
+
+//           if (snapshot.hasError) {
+//             return Center(child: Text('Error al cargar productos'));
+//           }
+
+//           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+//             return Center(
+//               child: Padding(
+//                 padding: EdgeInsets.all(16),
+//                 child: Text(
+//                   _selectedCategory == 'Todos'
+//                       ? 'No hay productos disponibles'
+//                       : 'No hay productos en esta categoría',
+//                   style: TextStyle(fontSize: 16),
+//                 ),
+//               ),
+//             );
+//           }
+
+//           // Filtrar los productos con cantidad mayor a 0
+//           final availableProducts = snapshot.data!.docs.where((product) {
+//             final productData = product.data() as Map<String, dynamic>;
+//             return (productData['cantidad'] ?? 0) > 0;
+//           }).toList();
+
+//           if (availableProducts.isEmpty) {
+//             return Center(
+//               child: Padding(
+//                 padding: EdgeInsets.all(16),
+//                 child: Text(
+//                   _selectedCategory == 'Todos'
+//                       ? 'No hay productos disponibles'
+//                       : 'No hay productos disponibles en esta categoría',
+//                   style: TextStyle(fontSize: 16),
+//                 ),
+//               ),
+//             );
+//           }
+
+//           return GridView.builder(
+//             shrinkWrap: true,
+//             physics: NeverScrollableScrollPhysics(),
+//             padding: EdgeInsets.all(16),
+//             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+//               crossAxisCount: 2,
+//               crossAxisSpacing: 16,
+//               mainAxisSpacing: 16,
+//               childAspectRatio: 0.68,
+//             ),
+//             itemCount: availableProducts.length, // Usar la lista filtrada
+//             itemBuilder: (context, index) {
+//               final product = availableProducts[index];
+//               final productData = product.data() as Map<String, dynamic>;
+//               final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
+//               final hasImages =
+//                   (productData['imageUrl']?.isNotEmpty == true) ||
+//                       storeImgs.isNotEmpty;
+
+//               return GestureDetector(
+//                 onTap: () => _showProductDetails(product),
+//                 child: Card(
+//                   elevation: 2,
+//                   child: Column(
+//                     crossAxisAlignment: CrossAxisAlignment.start,
+//                     children: [
+//                       Expanded(
+//                         child: Container(
+//                           decoration: BoxDecoration(
+//                             color: Theme.of(context).cardColor,
+//                           ),
+//                           child: hasImages
+//                               ? _buildProductImage(productData)
+//                               : _buildThemeAwarePlaceholder(context),
+//                         ),
+//                       ),
+//                       Padding(
+//                         padding: EdgeInsets.all(8),
+//                         child: Column(
+//                           crossAxisAlignment: CrossAxisAlignment.start,
+//                           children: [
+//                             Text(
+//                               productData['nombre'] ?? 'Sin nombre',
+//                               style: TextStyle(
+//                                   fontWeight: FontWeight.bold, fontSize: 16),
+//                               maxLines: 1,
+//                               overflow: TextOverflow.ellipsis,
+//                             ),
+//                             SizedBox(height: 4),
+//                             Text(
+//                               '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
+//                               style: TextStyle(color: Colors.green, fontSize: 15),
+//                             ),
+//                             SizedBox(height: 4),
+//                             Text(
+//                               'Disponibles: ${productData['cantidad'] ?? 0}',
+//                               style: TextStyle(
+//                                   color: productData['cantidad'] > 0
+//                                       ? Colors.black54
+//                                       : Colors.red,
+//                                   fontSize: 14),
+//                             ),
+//                           ],
+//                         ),
+//                       ),
+//                     ],
+//                   ),
+//                 ),
+//               );
+//             },
+//           );
+//         },
+//       ),
+//     ],
+//   );
+// }
+
+
+ Future<void> _loadInitialProducts() async {
+    // Lógica para cargar los productos iniciales
+    _getFilteredProducts().first.then((snapshot) {
+      setState(() {
+        _displayedProducts = snapshot.docs;
+      });
+    });
+  }
+
+  Stream<QuerySnapshot> _getFilteredProducts() {
+    if (_selectedCategory == 'Todos') {
+      return FirebaseFirestore.instance.collection('productos').snapshots();
+    } else {
+      return FirebaseFirestore.instance
+          .collection('productos')
+          .where('categoria', isEqualTo: _selectedCategory)
+          .snapshots();
+    }
+  }
+
+  Future<void> _searchProducts(String query) async {
+    setState(() {
+      _lastSearchQuery = query;
+      if (query.isNotEmpty && !_recentSearches.contains(query)) {
+        _recentSearches.add(query);
+        if (_recentSearches.length > 5) {
+          _recentSearches.removeAt(0);
+        }
+      }
+      _displayedProducts = [];
+    });
+
+    if (query.isNotEmpty) {
+      FirebaseFirestore.instance
+          .collection('productos')
+          .where('searchKeywords', arrayContains: query.toLowerCase())
+          .get()
+          .then((snapshot) {
+        setState(() {
+          _displayedProducts = snapshot.docs;
+        });
+      });
+    } else {
+      _loadInitialProducts();
+    }
+  }
+
+  Future<void> _loadSimilarProducts(DocumentSnapshot product) async {
+    final productData = product.data() as Map<String, dynamic>;
+    final List<String> categories = List<String>.from(productData['categorias'] ?? []);
+
+    // Lógica para buscar productos similares basada en categorías y/o la última búsqueda
+    Query query = FirebaseFirestore.instance.collection('productos');
+    if (categories.isNotEmpty) {
+      query = query.where('categorias', arrayContainsAny: categories);
+    }
+    if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
+      query = query.where('searchKeywords', arrayContains: _lastSearchQuery!.toLowerCase());
+    }
+    query = query.limit(10);
+
+    query.get().then((snapshot) {
+      setState(() {
+        _displayedProducts = snapshot.docs;
+      });
+    });
   }
 
   void _showProductDetails(DocumentSnapshot product) {
     final data = product.data() as Map<String, dynamic>;
     final List<String> images =
-        List<String>.from(data['imagenes'] ?? [data['imagen']]);
+        List<String>.from(data['imagenes'] ?? [data['imagen'] ?? '']);
 
     showModalBottomSheet(
       context: context,
@@ -671,7 +635,6 @@ class _StoreScreenState extends State<StoreScreen> {
           ),
           child: Column(
             children: [
-              // Sección deslizable para cerrar
               Container(
                 height: 4,
                 width: 40,
@@ -681,8 +644,6 @@ class _StoreScreenState extends State<StoreScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-
-              // Galería de imágenes
               Expanded(
                 child: ListView.builder(
                   itemCount: images.length,
@@ -694,9 +655,8 @@ class _StoreScreenState extends State<StoreScreen> {
                         child: CachedNetworkImage(
                           imageUrl: images[index],
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => Center(
-                            child: CircularProgressIndicator(),
-                          ),
+                          placeholder: (context, url) =>
+                              Center(child: CircularProgressIndicator()),
                           errorWidget: (context, url, error) =>
                               Icon(Icons.error),
                         ),
@@ -705,8 +665,6 @@ class _StoreScreenState extends State<StoreScreen> {
                   },
                 ),
               ),
-
-              // Detalles del producto (fijo en la parte inferior)
               Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -735,31 +693,7 @@ class _StoreScreenState extends State<StoreScreen> {
                       ],
                     ),
                     SizedBox(height: 12),
-
-                    // Selector de tallas
-                    if (data['tallas'] != null)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Tallas disponibles:',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children:
-                                List<Widget>.from(data['tallas'].map((talla) {
-                              return Chip(
-                                label: Text(talla),
-                                backgroundColor: Colors.grey[200],
-                              );
-                            })),
-                          ),
-                          SizedBox(height: 16),
-                        ],
-                      ),
-
-                    // Botón de agregar al carrito (MODIFICADO)
+                    // ... (Otros detalles del producto) ...
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -771,12 +705,9 @@ class _StoreScreenState extends State<StoreScreen> {
                           ),
                         ),
                         onPressed: () {
-                          _addToCart(product); // Agregar al carrito
-                          Navigator.pop(context); // Cerrar el BottomSheet
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('Producto agregado al carrito')),
-                          );
+                          // Lógica para agregar al carrito
+                          Navigator.pop(context);
+                          _loadSimilarProducts(product); // Cargar similares al cerrar
                         },
                         child: Text('AGREGAR AL CARRITO',
                             style: TextStyle(
@@ -792,6 +723,70 @@ class _StoreScreenState extends State<StoreScreen> {
           ),
         );
       },
+    ).then((_) {
+      // Este bloque se ejecuta cuando el BottomSheet se cierra
+      if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
+        _searchProducts(_lastSearchQuery!); // Recargar la última búsqueda
+      } else {
+        _loadInitialProducts(); // Si no hay búsqueda reciente, volver a cargar los iniciales
+      }
+    });
+  }
+
+
+Widget _buildProductImage(Map<String, dynamic> productData) {
+  final isDarkMode = Get.isDarkMode;
+  final storeImgs = productData['storeImgs'] as List<dynamic>?;
+  final String? imageUrl = productData['imageUrl'];
+  final defaultImage =
+      isDarkMode ? 'assets/images/moon_negro.png' : 'assets/images/moon_blanco.png';
+
+  Widget imageWidget;
+
+  if (imageUrl?.isNotEmpty == true) {
+    imageWidget = CachedNetworkImage(
+      imageUrl: imageUrl!,
+      fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
+      placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+      errorWidget: (context, url, error) => Icon(Icons.error),
+    );
+  } else if (storeImgs != null && storeImgs.isNotEmpty && storeImgs[0]?.isNotEmpty == true) {
+    imageWidget = CachedNetworkImage(
+      imageUrl: storeImgs[0],
+      fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
+      placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+      errorWidget: (context, url, error) => Icon(Icons.error),
+    );
+  } else {
+    imageWidget = Image.asset(
+      defaultImage,
+      fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen de relleno también
+    );
+  }
+
+  return ClipRRect(
+  borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+  child: SizedBox(
+    width: double.infinity,
+    child: imageWidget,
+  ),
+);
+
+}
+
+  Widget _buildThemeAwarePlaceholder(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final placeholderImage = isDarkMode
+        ? 'assets/images/moon_solo_blanco.png'
+        : 'assets/images/moon_solo_negro.png';
+
+    return Center(
+      child: Image.asset(
+        placeholderImage,
+        width: 100,
+        height: 100,
+        fit: BoxFit.contain,
+      ),
     );
   }
 
@@ -834,11 +829,14 @@ class _StoreScreenState extends State<StoreScreen> {
 }
 
 class ProductSearchDelegate extends SearchDelegate {
+  final Function(DocumentSnapshot) onProductTap;
+
+   ProductSearchDelegate({required this.onProductTap});
   @override
   List<Widget> buildActions(BuildContext context) {
     return [
       IconButton(
-        icon: Icon(Icons.clear),
+        icon: const Icon(Icons.clear),
         onPressed: () {
           query = '';
         },
@@ -849,7 +847,7 @@ class ProductSearchDelegate extends SearchDelegate {
   @override
   Widget buildLeading(BuildContext context) {
     return IconButton(
-      icon: Icon(Icons.arrow_back),
+      icon: const Icon(Icons.arrow_back),
       onPressed: () {
         close(context, null);
       },
@@ -863,22 +861,36 @@ class ProductSearchDelegate extends SearchDelegate {
 
   @override
   Widget buildSuggestions(BuildContext context) {
+    if (query.isEmpty) {
+      return const Center(
+        child: Text('Busca algún producto'),
+      );
+    }
     return _buildSearchResults(query);
   }
 
-  Widget _buildSearchResults(String searchQuery) {
+   Widget _buildSearchResults(String searchQuery) {
+    if (searchQuery.isEmpty) {
+      return const Center(
+        child: Text('Busca algún producto'),
+      );
+    }
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('productos')
-          .where('nombre', isGreaterThanOrEqualTo: searchQuery)
-          .where('nombre', isLessThanOrEqualTo: searchQuery + '\uf8ff')
+          .where('searchKeywords', arrayContains: searchQuery.toLowerCase())
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator());
         }
 
         final results = snapshot.data!.docs;
+
+        if (results.isEmpty) {
+          return Center(child: Text('No se encontraron productos para "$searchQuery"'));
+        }
 
         return ListView.builder(
           itemCount: results.length,
@@ -892,12 +904,15 @@ class ProductSearchDelegate extends SearchDelegate {
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
+                placeholder: (context, url) => const CircularProgressIndicator(),
+                errorWidget: (context, url, error) => const Icon(Icons.error),
               ),
               title: Text(data['nombre'] ?? ''),
               subtitle:
                   Text('\$${data['precio']?.toStringAsFixed(2) ?? '0.00'}'),
               onTap: () {
-                // Navegar a pantalla de detalle
+                 close(context, null);
+                onProductTap(product);
               },
             );
           },
@@ -917,5 +932,277 @@ class Debouncer {
   void run(VoidCallback action) {
     _timer?.cancel();
     _timer = Timer(Duration(milliseconds: milliseconds), action);
+  }
+}
+
+class ProductListSection extends StatefulWidget {
+  final String? selectedCategory;
+  final Function(DocumentSnapshot) showProductDetails;
+  final Query<Map<String, dynamic>> Function()? getProductQuery;
+
+  const ProductListSection({
+    Key? key,
+    this.selectedCategory,
+    required this.showProductDetails, this.getProductQuery,
+  }) : super(key: key);
+
+  @override
+  _ProductListSectionState createState() => _ProductListSectionState();
+}
+
+class _ProductListSectionState extends State<ProductListSection> {
+  final ScrollController _scrollController = ScrollController();
+  final int _limit = 20; // Cantidad de productos a cargar por página
+  DocumentSnapshot? _lastDocument;
+  bool _isLoading = false;
+  List<DocumentSnapshot> _products = [];
+  bool _hasMore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMoreProducts();
+    _scrollController.addListener(_scrollListener);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+ @override
+void didUpdateWidget(covariant ProductListSection oldWidget) {
+  super.didUpdateWidget(oldWidget);
+  if (widget.selectedCategory != oldWidget.selectedCategory) {
+    print('Categoría cambió de ${oldWidget.selectedCategory} a ${widget.selectedCategory}');
+    _products.clear();
+    _lastDocument = null;
+    _hasMore = true;
+    _loadMoreProducts();
+  }
+}
+
+  void _scrollListener() {
+    if (!_isLoading && _hasMore && _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreProducts();
+    }
+  }
+ 
+ Future<void> _loadMoreProducts() async {
+  if (_isLoading) return;
+  setState(() {
+    _isLoading = true;
+  });
+
+  Query<Map<String, dynamic>>? baseQuery = widget.getProductQuery?.call();
+  if (baseQuery == null) {
+    setState(() {
+      _isLoading = false;
+      _hasMore = false;
+    });
+    return;
+  }
+
+  Query<Map<String, dynamic>> paginatedQuery = baseQuery.limit(_limit);
+
+  if (_lastDocument != null && _products.isNotEmpty) { // Añadimos una verificación si _products no está vacío
+    paginatedQuery = paginatedQuery.startAfterDocument(_lastDocument!);
+  }
+
+  try {
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await paginatedQuery.get();
+    List<DocumentSnapshot> newProducts = [];
+    for (var doc in snapshot.docs) {
+      if (doc.data().containsKey('categoriaId') || widget.selectedCategory == 'Todos') {
+        newProducts.add(doc);
+      } else {
+        print('Producto omitido (sin categoriaId): ${doc.id}');
+      }
+    }
+
+    if (newProducts.isNotEmpty) {
+      _lastDocument = newProducts.last;
+      _products.addAll(newProducts);
+    } else {
+      _hasMore = false;
+    }
+  } catch (e) {
+    print('Error al cargar productos: $e');
+    // Manejar el error aquí
+    _hasMore = false; // Importante para detener intentos de carga
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
+  }
+}
+  
+
+  Widget _buildProductImage(Map<String, dynamic> productData) {
+    final isDarkMode = Get.isDarkMode;
+    final storeImgs = productData['storeImgs'] as List<dynamic>?;
+    final String? imageUrl = productData['imageUrl'];
+    final defaultImage =
+        isDarkMode ? 'assets/images/moon_negro.png' : 'assets/images/moon_blanco.png';
+
+    Widget imageWidget;
+
+    if (imageUrl?.isNotEmpty == true) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: imageUrl!,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+        errorWidget: (context, url, error) => Icon(Icons.error),
+      );
+    } else if (storeImgs != null && storeImgs.isNotEmpty && storeImgs[0]?.isNotEmpty == true) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: storeImgs[0],
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+        errorWidget: (context, url, error) => Icon(Icons.error),
+      );
+    } else {
+      imageWidget = Image.asset(
+        defaultImage,
+        fit: BoxFit.fill,
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+      child: imageWidget,
+    );
+  }
+
+  Widget _buildThemeAwarePlaceholder(BuildContext context) {
+    final isDarkMode = Get.isDarkMode;
+    final defaultImage =
+        isDarkMode ? 'assets/images/moon_negro.png' : 'assets/images/moon_blanco.png';
+    return Image.asset(
+      defaultImage,
+      fit: BoxFit.contain,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 8),
+          child: Text(
+            'Catálogo ${widget.selectedCategory != 'Todos' && widget.selectedCategory != null ? '(${widget.selectedCategory})' : ''}',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Expanded(
+          child: GridView.builder(
+            controller: _scrollController,
+            padding: EdgeInsets.all(16),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 0.68,
+            ),
+            itemCount: _products.length + (_hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index < _products.length) {
+                final product = _products[index];
+                final productData = product.data() as Map<String, dynamic>;
+                final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
+                final hasImages =
+                    (productData['imagen']?.isNotEmpty == true) ||
+                        storeImgs.isNotEmpty;
+
+                return GestureDetector(
+                  onTap: () => widget.showProductDetails(product),
+                  child: Card(
+                    elevation: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).cardColor,
+                            ),
+                            child: hasImages
+                                ? _buildProductImage(productData)
+                                : _buildThemeAwarePlaceholder(context),
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                productData['nombre'] ?? 'Sin nombre',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 16),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
+                                style: TextStyle(color: Colors.green, fontSize: 15),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Disponibles: ${productData['cantidad'] ?? 0}',
+                                style: TextStyle(
+                                    color: productData['cantidad'] > 0
+                                        ? Colors.black54
+                                        : Colors.red,
+                                    fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              } else if (_hasMore) {
+                return Center(child: CircularProgressIndicator());
+              } else {
+                return SizedBox.shrink();
+              }
+            },
+          ),
+        ),
+        if (_isLoading) Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        if (!_hasMore && _products.isEmpty) Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Center(
+            child: Text(
+              widget.selectedCategory == 'Todos'
+                  ? 'No hay productos disponibles'
+                  : 'No hay productos en esta categoría',
+              style: TextStyle(fontSize: 16),
+            ),
+          ),
+        ),
+        if (!_hasMore && _products.isNotEmpty) Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Center(
+            child: Text(
+              'No hay más productos para cargar.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

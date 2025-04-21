@@ -36,7 +36,6 @@ class _InventoryPageState extends State<InventoryPage> {
   bool _creandoCategoria = false;
   // Variables adicionales para el estado
   String? selectedCategoryId;
-  List<File> _tempAdditionalImages = [];
   bool _isSaving = false;
 
   // Controladores para los productos
@@ -195,14 +194,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Future<bool> _checkIfProductCodeExists(String productCode) async {
-    QuerySnapshot query = await FirebaseFirestore.instance
-        .collection('productos')
-        .where('codigo', isEqualTo: productCode)
-        .get();
 
-    return query.docs.isNotEmpty;
-  }
 
 //  Subir imagen a Firebase Storage
   Future<String?> _uploadImageToFirebase(File image) async {

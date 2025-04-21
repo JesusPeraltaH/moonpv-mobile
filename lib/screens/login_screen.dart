@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart'; // Pantalla de Admin
 import 'package:moonpv/screens/business_owner_screen.dart'; // Pantalla de Dueño de Negocio
+import 'package:moonpv/screens/sign_up.dart';
 import 'package:moonpv/screens/store_screen.dart'; // Pantalla de Usuario Normal
 import 'package:moonpv/services/app_images.dart';
 import 'package:moonpv/services/auth_service.dart';
@@ -24,153 +25,224 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false; // Estado de carga
   bool _obscurePassword = true; // Control de visibilidad de la contraseña
   
-
+void _showCreateAccountBottomSheet(BuildContext context) {
+    Get.bottomSheet(
+      CreateAccountBottomSheet(),
+      isScrollControlled: true, 
+      backgroundColor: Colors.white, // <- Muy importante para opacidad
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  ),// Permite que el bottom sheet sea más alto
+    );
+  }
+  
   @override
 Widget build(BuildContext context) {
-  // Determinar el color de los íconos según el tema
-  Color iconColor = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
-final isDark = Theme.of(context).brightness == Brightness.dark;
+  final iconColor = Theme.of(context).brightness == Brightness.dark 
+      ? Colors.white 
+      : Colors.black;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+
   return Scaffold(
-    // appBar: AppBar(
-    //   title: Text("Login", style: TextStyle(color: Colors.white)),
-    //   backgroundColor: Theme.of(context).colorScheme.primary,
-    // ),
-    body: Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Image.asset(
-        isDark ? 'assets/images/moon_blanco.png' : 'assets/images/moon_negro.png',
-        height: 200,
-      ),
-          TextField(
-            controller: _emailController,
-            decoration: InputDecoration(
-              labelText: "Correo",
-              prefixIcon: Icon(Icons.email, color: iconColor),  // Cambiar color del ícono
-            ),
-            keyboardType: TextInputType.emailAddress,
-            style: TextStyle(color: iconColor),
-          ),
-          SizedBox(height: 20),
-          TextField(
-            controller: _passwordController,
-            decoration: InputDecoration(
-              labelText: "Contraseña",
-              prefixIcon: Icon(Icons.lock, color: iconColor),  // Cambiar color del ícono
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                  color: iconColor,  // Cambiar color del ícono
+    body: Stack(
+      children: [
+        // Contenido principal centrado
+        Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  isDark ? 'assets/images/moon_blanco.png' : 'assets/images/moon_negro.png',
+                  height: 200,
                 ),
-                onPressed: () {
-                  setState(() {
-                    _obscurePassword = !_obscurePassword;
-                  });
-                },
-              ),
-            ),
-            obscureText: _obscurePassword,
-            style: TextStyle(color: iconColor),
-          ),
-          SizedBox(height: 30),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : () async {
-                setState(() => _isLoading = true);
-                await _login(context);
-                setState(() => _isLoading = false);
-              },
-              child: _isLoading
-                  ? CircularProgressIndicator(color: Colors.white)
-                  : Text("Iniciar Sesión"),
-            ),
-          ),
-          SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : () async {
-                setState(() => _isLoading = true);
-                await _loginWithGoogle();
-                setState(() => _isLoading = false);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-              ),
-              child: _isLoading
-                  ? CircularProgressIndicator()
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.asset(
-                          AppImages.google,
-                          height: 24,
-                        ),
-                        SizedBox(width: 10),
-                        Text("Iniciar sesión con Google"),
-                      ],
+                const SizedBox(height: 32),
+                TextField(
+                  controller: _emailController,
+                  decoration: InputDecoration(
+                    labelText: "Correo",
+                    prefixIcon: Icon(Icons.email, color: iconColor),
+                 
+                ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: "Contraseña",
+                    prefixIcon: Icon(Icons.lock, color: iconColor),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                        color: iconColor,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
                     ),
+                  ),
+                  obscureText: _obscurePassword,
+                  style: TextStyle(color: iconColor),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => _showCreateAccountBottomSheet(context),
+                      child: Text(
+                        "Olvidé mi contraseña",
+                        style: TextStyle(color: Theme.of(context).primaryColor),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : () async {
+                      setState(() => _isLoading = true);
+                      await _login(context);
+                      setState(() => _isLoading = false);
+                    },
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text("Iniciar Sesión"),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : () async {
+                      setState(() => _isLoading = true);
+                      await _loginWithGoogle();
+                      setState(() => _isLoading = false);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator()
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                AppImages.google,
+                                height: 24,
+                              ),
+                              const SizedBox(width: 10),
+                              const Text("Iniciar sesión con Google"),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+
+        // Sección "Aún no tienes cuenta" fija en la parte inferior
+        Positioned(
+          bottom: 20,
+          left: 0,
+          right: 0,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text("¿Aún no tienes cuenta?"),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () => _showCreateAccountBottomSheet(context),
+                child: Text(
+                  "Crear cuenta",
+                  style: TextStyle(color: Theme.of(context).primaryColor),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     ),
   );
 }
+  
 
-  Future<void> _login(BuildContext context) async {
-    final String email = _emailController.text.trim();
-    final String password = _passwordController.text.trim();
+ Future<void> _login(BuildContext context) async {
+  final String email = _emailController.text.trim();
+  final String password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      Get.snackbar("Error", "Por favor, ingresa tu correo y contraseña",
-          snackPosition: SnackPosition.BOTTOM);
-      return;
-    }
+  if (email.isEmpty || password.isEmpty) {
+    _showSnackbar("Error", "Por favor, ingresa tu correo y contraseña", Colors.red);
+    return;
+  }
 
-    try {
-      final UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(email: email, password: password);
+  try {
+    final UserCredential userCredential =
+        await _auth.signInWithEmailAndPassword(email: email, password: password);
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userId', userCredential.user!.uid);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setString('userId', userCredential.user!.uid);
 
-      final DocumentSnapshot userDoc = await _firestore
-          .collection('users')
-          .doc(userCredential.user?.uid)
-          .get();
+    final DocumentSnapshot userDoc =
+        await _firestore.collection('users').doc(userCredential.user?.uid).get();
 
-      await Future.delayed(Duration(seconds: 2)); // Simulación de carga visible
+    _showSnackbar("Bienvenido", "Inicio de sesión exitoso", Colors.green);
 
-      if (userDoc.exists) {
-        final String role = userDoc['role'];
-        await prefs.setString('userRole', role);
+    await Future.delayed(Duration(seconds: 2));
 
-        if (role == "Admin") {
-          Get.off(() => SalespointNewSalePage());
-        } else if (role == "Dueño de Negocio") {
-          Get.off(() => BusinessOwnerScreen());
-        } else if (role == "Empleado") {
-          Get.off(() => SalespointNewSalePage());
-        } else {
-          Get.off(() => StoreScreen());
-        }
+    if (userDoc.exists) {
+      final String role = userDoc['role'];
+      await prefs.setString('userRole', role);
+
+      if (role == "Admin") {
+        Get.off(() => SalespointNewSalePage());
+      } else if (role == "Dueño de Negocio") {
+        Get.off(() => BusinessOwnerScreen());
+      } else if (role == "Empleado") {
+        Get.off(() => SalespointNewSalePage());
       } else {
         Get.off(() => StoreScreen());
       }
-    } catch (e) {
-      Get.snackbar("Error", "No se pudo iniciar sesión: $e",
-          snackPosition: SnackPosition.BOTTOM);
-      await _logout();
+    } else {
+      Get.off(() => StoreScreen());
     }
+  } on FirebaseAuthException catch (e) {
+    String errorMessage = "Ocurrió un error al iniciar sesión.";
+
+    if (e.code == 'user-not-found') {
+      errorMessage = "No existe una cuenta con ese correo.";
+    } else if (e.code == 'wrong-password') {
+      errorMessage = "La contraseña es incorrecta.";
+    } else if (e.code == 'invalid-email') {
+      errorMessage = "El correo ingresado no es válido.";
+    }
+
+    _showSnackbar("Error", errorMessage, Colors.red);
+    await _logout();
+  } catch (e) {
+    _showSnackbar("Error", "Error inesperado al iniciar sesión.", Colors.red);
+    await _logout();
   }
+}
+
+void _showSnackbar(String title, String message, Color color) {
+  Get.snackbar(
+    title,
+    message,
+    snackPosition: SnackPosition.TOP,
+    backgroundColor: color,
+    colorText: Colors.white,
+    margin: EdgeInsets.all(10),
+  );
+}
+
 
   Future<void> _loginWithGoogle() async {
     try {
