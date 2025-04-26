@@ -1,0 +1,2 @@
+/Users/jesusperalta/Documents/Programar/moonpv-mobile/android/app/.cxx/Debug/1f3v1771/x86/CMakeFiles/edit_cache.dir
+/Users/jesusperalta/Documents/Programar/moonpv-mobile/android/app/.cxx/Debug/1f3v1771/x86/CMakeFiles/rebuild_cache.dir

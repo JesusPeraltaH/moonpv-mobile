@@ -1,13 +1,24 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:moonpv/inventory/Ajustes_screen.dart';
+import 'package:moonpv/inventory/main_drawer.dart';
+import 'package:moonpv/inventory/sales.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
+import 'package:moonpv/screens/add_user_screen.dart';
+import 'package:moonpv/screens/conteo.dart';
+import 'package:moonpv/screens/login_screen.dart';
+import 'package:moonpv/screens/payment_management_screen.dart';
 import 'package:moonpv/services/barcode_scanner_page.dart';
+import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class InventoryPage extends StatefulWidget {
   @override
@@ -193,8 +204,6 @@ class _InventoryPageState extends State<InventoryPage> {
       },
     );
   }
-
-
 
 //  Subir imagen a Firebase Storage
   Future<String?> _uploadImageToFirebase(File image) async {
@@ -955,6 +964,49 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
+  void _logout(BuildContext context) async {
+    // Mostrar un diálogo de confirmación
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Cerrar sesión'),
+          content: Text('¿Estás seguro de que deseas cerrar sesión?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Cerrar el diálogo
+              },
+              child: Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Cerrar el diálogo
+                try {
+                  await FirebaseAuth.instance
+                      .signOut(); // Cerrar sesión en Firebase
+
+                  // Eliminar el estado de autenticación guardado en SharedPreferences
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('isLoggedIn');
+                  await prefs.remove('userId');
+
+                  Get.offAll(() =>
+                      LoginScreen()); // Navegar a la pantalla de inicio de sesión
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error al cerrar sesión: $e')),
+                  );
+                }
+              },
+              child: Text('Cerrar sesión', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   //Index].
   void _editProduct(int index) {
     final product = productsList[index];
@@ -1109,39 +1161,11 @@ class _InventoryPageState extends State<InventoryPage> {
             },
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add, color: Colors.blue),
-            onPressed: _mostrarBottomSheetCategoria,
-            tooltip: 'Agregar categoría',
-          ),
-        ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: <Widget>[
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.black,
-              ),
-              child: Text(
-                'Menú de Navegación',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                ),
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.home),
-              title: Text('Página Principal'),
-              onTap: () {
-                Get.to(SalespointNewSalePage());
-              },
-            ),
-          ],
-        ),
+      drawer: MainDrawer(
+        logoutCallback: (context) {
+          print('Cerrando sesión desde InventoryPage');
+        },
       ),
       body: Column(
         children: [
@@ -1212,12 +1236,15 @@ class _InventoryPageState extends State<InventoryPage> {
           if (isPortrait) // Mostrar barra inferior solo en modo vertical
             Container(
               color: Colors.black,
-              padding: EdgeInsets.symmetric(vertical: 8.0),
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.business, color: Colors.white),
+                    icon: Icon(Icons.business,
+                        color: showForm
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6)),
                     onPressed: () {
                       setState(() {
                         showForm = true;
@@ -1227,7 +1254,10 @@ class _InventoryPageState extends State<InventoryPage> {
                     },
                   ),
                   IconButton(
-                    icon: Icon(Icons.shopping_cart, color: Colors.white),
+                    icon: Icon(Icons.shopping_cart,
+                        color: showProductForm
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6)),
                     onPressed: () {
                       setState(() {
                         showForm = false;
@@ -1237,7 +1267,10 @@ class _InventoryPageState extends State<InventoryPage> {
                     },
                   ),
                   IconButton(
-                    icon: Icon(Icons.list, color: Colors.white),
+                    icon: Icon(Icons.list,
+                        color: showBusinessProducts
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6)),
                     onPressed: () {
                       setState(() {
                         showForm = false;
@@ -1247,7 +1280,10 @@ class _InventoryPageState extends State<InventoryPage> {
                     },
                   ),
                   IconButton(
-                    icon: Icon(Icons.home, color: Colors.white),
+                    icon: Icon(Icons.home,
+                        color: Get.currentRoute == '/SalespointNewSalePage'
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6)),
                     onPressed: () {
                       Get.to(SalespointNewSalePage());
                     },
@@ -1758,6 +1794,11 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildBusinessList() {
     bool isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
+    bool _isCategoriesExpanded =
+        false; // Estado para controlar la expansión de categorías
+    Map<String, bool> _isCategorySwipeEnabled =
+        {}; // Mapa para controlar el estado del swipe por categoría
+    Map<String, bool> _isLoadingPdf = {};
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('negocios').snapshots(),
@@ -1779,6 +1820,93 @@ class _InventoryPageState extends State<InventoryPage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Sección de Categorías (Colapsable)
+              ExpansionTile(
+                title: Text(
+                  'Categorías',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                initiallyExpanded: _isCategoriesExpanded,
+                onExpansionChanged: (expanded) {
+                  setState(() {
+                    _isCategoriesExpanded = expanded;
+                  });
+                },
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _mostrarBottomSheetCategoria,
+                        icon: Icon(Icons.add),
+                        label: Text('Crear Nueva'),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('categories')
+                        .snapshots(),
+                    builder: (context, categorySnapshot) {
+                      if (categorySnapshot.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text('Error al cargar categorías'),
+                        );
+                      }
+                      if (!categorySnapshot.hasData) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final categoriesDocs = categorySnapshot.data!.docs;
+
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        itemCount: categoriesDocs.length,
+                        itemBuilder: (context, index) {
+                          final categoryDoc = categoriesDocs[index];
+                          final categoryName = categoryDoc['nombre'] as String;
+                          final categoryId = categoryDoc.id;
+
+                          // Inicializar el estado del swipe si no existe
+                          _isCategorySwipeEnabled.putIfAbsent(
+                              categoryId, () => false);
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0, vertical: 4.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('- $categoryName'),
+                                Switch(
+                                  value: _isCategorySwipeEnabled[categoryId] ??
+                                      false,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _isCategorySwipeEnabled[categoryId] =
+                                          value;
+                                      // TODO: Implementar la lógica para habilitar/deshabilitar el swipe para esta categoría
+                                      print(
+                                          'Swipe para $categoryName (${categoryId}): $value');
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  SizedBox(height: 8),
+                ],
+              ),
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 5.0, vertical: 5.0),
@@ -1792,6 +1920,8 @@ class _InventoryPageState extends State<InventoryPage> {
                   itemCount: businesses.length,
                   itemBuilder: (context, index) {
                     final business = businesses[index];
+                    final businessId = business['id'] as String;
+
                     return Dismissible(
                       key: Key(business['id']),
                       direction: DismissDirection.endToStart,
@@ -1867,6 +1997,51 @@ class _InventoryPageState extends State<InventoryPage> {
                               Text('Teléfono: ${business['telefono']}'),
                             ],
                           ),
+                          trailing: IconButton(
+                            icon: _isLoadingPdf[businessId] == true
+                                ? SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : Icon(Icons.print),
+                            onPressed: _isLoadingPdf[businessId] == true
+                                ? null // Deshabilitar el botón durante la carga
+                                : () async {
+                                    setState(() {
+                                      _isLoadingPdf[businessId] = true;
+                                    });
+                                    final products =
+                                        await _fetchProductsForBusiness(
+                                            businessId);
+                                    if (products.isNotEmpty) {
+                                      final pdfFile = await _generateProductPdf(
+                                          business['nombreEmpresa'], products);
+                                      if (pdfFile != null) {
+                                        _openPdf(pdfFile);
+                                      } else {
+                                        // Mostrar un mensaje de error si la generación del PDF falla
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text(
+                                                  'Error al generar el PDF.')),
+                                        );
+                                      }
+                                    } else {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                'No hay productos para este negocio.')),
+                                      );
+                                    }
+                                    setState(() {
+                                      _isLoadingPdf[businessId] = false;
+                                    });
+                                  },
+                          ),
                           onTap: () async {
                             final products =
                                 await _fetchProductsForBusiness(business['id']);
@@ -1887,6 +2062,8 @@ class _InventoryPageState extends State<InventoryPage> {
           padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Row(
             children: businesses.map((business) {
+              final businessId = business['id'] as String;
+
               return GestureDetector(
                 onTap: () async {
                   final products =
@@ -1912,23 +2089,77 @@ class _InventoryPageState extends State<InventoryPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      business['logo'] != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: Image.network(
-                                business['logo'],
-                                height: 80,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          : Container(
-                              height: 80,
-                              width: double.infinity,
-                              color: Colors.grey.shade300,
-                              child: Icon(Icons.business,
-                                  size: 40, color: Colors.grey),
+                      Stack(
+                        alignment: Alignment.topRight,
+                        children: [
+                          business['logo'] != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Image.network(
+                                    business['logo'],
+                                    height: 80,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              : Container(
+                                  height: 80,
+                                  width: double.infinity,
+                                  color: Colors.grey.shade300,
+                                  child: Icon(Icons.business,
+                                      size: 40, color: Colors.grey),
+                                ),
+                          Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: InkWell(
+                              onTap: _isLoadingPdf[businessId] == true
+                                  ? null
+                                  : () async {
+                                      setState(() {
+                                        _isLoadingPdf[businessId] = true;
+                                      });
+                                      final products =
+                                          await _fetchProductsForBusiness(
+                                              businessId);
+                                      if (products.isNotEmpty) {
+                                        final pdfFile =
+                                            await _generateProductPdf(
+                                                business['nombreEmpresa'],
+                                                products);
+                                        if (pdfFile != null) {
+                                          _openPdf(pdfFile);
+                                        } else {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                                content: Text(
+                                                    'Error al generar el PDF.')),
+                                          );
+                                        }
+                                      } else {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text(
+                                                  'No hay productos para este negocio.')),
+                                        );
+                                      }
+                                      setState(() {
+                                        _isLoadingPdf[businessId] = false;
+                                      });
+                                    },
+                              child: _isLoadingPdf[businessId] == true
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                  : Icon(Icons.print, size: 20),
                             ),
+                          ),
+                        ],
+                      ),
                       SizedBox(height: 8),
                       Text(
                         business['nombreEmpresa'],
@@ -1947,6 +2178,50 @@ class _InventoryPageState extends State<InventoryPage> {
         );
       },
     );
+  }
+
+  Future<File?> _generateProductPdf(
+      String businessName, List<Map<String, dynamic>> products) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(pw.MultiPage(
+      build: (pw.Context context) => [
+        pw.Header(level: 0, child: pw.Text('Productos de $businessName')),
+        pw.Table.fromTextArray(
+          headers: <String>['Código', 'Nombre', 'Cantidad', 'Precio'],
+          data: products
+              .map((product) => <String>[
+                    product['codigo'] ?? '',
+                    product['nombre'] ?? '',
+                    product['cantidad']?.toString() ?? '0',
+                    product['precio']?.toStringAsFixed(2) ?? '0.00',
+                  ])
+              .toList(),
+        ),
+      ],
+    ));
+
+    try {
+      final bytes = await pdf.save();
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/productos_$businessName.pdf');
+      await file.writeAsBytes(bytes);
+      return file;
+    } catch (e) {
+      print('Error generating PDF: $e');
+      return null;
+    }
+  }
+
+  Future<void> _openPdf(File pdfFile) async {
+    final result = await OpenFile.open(pdfFile.path);
+
+    if (result.type != ResultType.done) {
+      print('Error al abrir el PDF: ${result.message}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo abrir el PDF.')),
+      );
+    }
   }
 
   Future<void> _deleteBusiness(String id) async {

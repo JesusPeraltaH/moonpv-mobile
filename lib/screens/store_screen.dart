@@ -19,7 +19,7 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
+
   String _selectedBusiness = 'Todos';
   String _selectedCategory = 'Todos';
   String? _selectedCategoryId = 'Todos';
@@ -30,7 +30,7 @@ class _StoreScreenState extends State<StoreScreen> {
   List<DocumentSnapshot> _displayedProducts = [];
 
   // Categorías y negocios pueden venir de Firestore también
-  
+
   @override
   void initState() {
     super.initState();
@@ -56,7 +56,8 @@ class _StoreScreenState extends State<StoreScreen> {
     } else {
       print('Mostrando todos los productos');
     }
-    print('Consulta base generada: ${query.parameters}'); // Imprime los parámetros de la consulta
+    print(
+        'Consulta base generada: ${query.parameters}'); // Imprime los parámetros de la consulta
     return query;
   }
 
@@ -66,7 +67,7 @@ class _StoreScreenState extends State<StoreScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      drawerEdgeDragWidth: 40, // default = 20. Ajusta si querés más sensible
+      drawerEdgeDragWidth: 40,
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -123,85 +124,74 @@ class _StoreScreenState extends State<StoreScreen> {
         ),
       ),
       body: Builder(
-        // <- Necesario para abrir el drawer desde contexto
-        builder: (context) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(
-                    left: 120, bottom: 0, right: 0, top: 50),
-                child: Image.asset(
-                  isDark
-                      ? 'assets/images/moon_blanco.png'
-                      : 'assets/images/moon_negro.png',
-                  height: 150,
+        builder: (context) => CustomScrollView(
+          slivers: <Widget>[
+            SliverAppBar(
+              backgroundColor: Colors.white,
+              expandedHeight: 230.0,
+              floating: false,
+              pinned: true,
+              flexibleSpace: FlexibleSpaceBar(
+                background: Padding(
+                  padding: const EdgeInsets.only(
+                      left: 120, bottom: 0, right: 0, top: 50),
+                  child: Image.asset(
+                    isDark
+                        ? 'assets/images/moon_blanco.png'
+                        : 'assets/images/moon_negro.png',
+                    height: 150,
+                  ),
                 ),
               ),
-              SizedBox(height: 12),
-
-              // 🔥 Nuevo: Texto interactivo para abrir el drawer
-              GestureDetector(
-                onTap: () => Scaffold.of(context).openDrawer(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    ' Desliza desde la izquierda o toca aquí para más opciones',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontStyle: FontStyle.italic,
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SearchBarDelegate(
+                onSearchTap: () {
+                  showSearch(
+                    context: context,
+                    delegate: ProductSearchDelegate(
+                        onProductTap: _showProductDetails),
+                  );
+                },
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: () => Scaffold.of(context).openDrawer(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        ' Desliza desde la izquierda o toca aquí para más opciones',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  SizedBox(height: 16),
+                  _buildCategoriesSection(),
+                  _buildBusinessesSection(),
+                  _buildRecentSearches(),
+                ],
               ),
-
-              SizedBox(height: 12),
-
-              GestureDetector(
-                onTap: () {
-                  showSearch(
-                      context: context, delegate: ProductSearchDelegate(onProductTap: _showProductDetails));
-                },
-                child: Container(
-                  margin: EdgeInsets.symmetric(horizontal: 16),
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade200,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.search, color: Colors.grey),
-                      SizedBox(width: 8),
-                      Text(
-                        'Buscar productos...',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: 16),
-              _buildCategoriesSection(),
-              _buildBusinessesSection(),
-              //_buildProductsSection(),
-              //_buildProductsSection(),
-               Expanded(
-            child: ProductListSection(
+            ),
+            ProductListSection(
+              // <- ProductListSection ahora devuelve un Sliver
               selectedCategory: _selectedCategory,
               showProductDetails: _showProductDetails,
               getProductQuery: _getProductQuery,
             ),
-          ),
-            _buildRecentSearches(),
-
-            ],
-          ),
-        
+          ],
+        ),
       ),
     );
   }
 
-  
   Widget _buildCategoriesSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -228,9 +218,8 @@ class _StoreScreenState extends State<StoreScreen> {
               // Crear lista de categorías comenzando con "Todos"
               final categories = ['Todos'];
               final categoryDocs = snapshot.data!.docs;
-              categories.addAll(categoryDocs
-                  .map((doc) => doc['nombre'] as String)
-                  .toList());
+              categories.addAll(
+                  categoryDocs.map((doc) => doc['nombre'] as String).toList());
 
               return ListView.builder(
                 scrollDirection: Axis.horizontal,
@@ -239,14 +228,17 @@ class _StoreScreenState extends State<StoreScreen> {
                   final categoryName = categories[index];
                   String? categoryId;
                   if (index > 0) {
-                    categoryId = categoryDocs[index - 1].id; // Obtener el ID del documento
+                    categoryId = categoryDocs[index - 1]
+                        .id; // Obtener el ID del documento
                   }
 
                   return GestureDetector(
                     onTap: () {
                       setState(() {
-                        _selectedCategoryId = categoryId; // Actualizar _selectedCategoryId con el ID
-                        print('Categoría seleccionada: $categoryName, ID: $_selectedCategoryId');
+                        _selectedCategoryId =
+                            categoryId; // Actualizar _selectedCategoryId con el ID
+                        print(
+                            'Categoría seleccionada: $categoryName, ID: $_selectedCategoryId');
                       });
                     },
                     child: Container(
@@ -282,136 +274,160 @@ class _StoreScreenState extends State<StoreScreen> {
 
 // Función para filtrar productos según categoría seleccionada
   Future<void> _filterProductsByCategory() async {
-    Query query = FirebaseFirestore.instance
-        .collection('productos')
-        .where('cantidad', isGreaterThan: 0);
+    try {
+      Query query = FirebaseFirestore.instance
+          .collection('productos')
+          .where('cantidad', isGreaterThan: 0);
 
-    if (_selectedCategory != 'Todos') {
-      // Primero obtenemos el ID de la categoría seleccionada
-      final categoryQuery = await FirebaseFirestore.instance
-          .collection('categories')
-          .where('nombre', isEqualTo: _selectedCategory)
-          .limit(1)
-          .get();
+      try {
+        if (_selectedCategory != 'Todos') {
+          // Primero obtenemos el ID de la categoría seleccionada
+          final categoryQuery = await FirebaseFirestore.instance
+              .collection('categories')
+              .where('nombre', isEqualTo: _selectedCategory)
+              .limit(1)
+              .get();
 
-      if (categoryQuery.docs.isNotEmpty) {
-        final categoryId = categoryQuery.docs.first.id;
-        query = query.where('categoriaId', isEqualTo: categoryId);
+          if (categoryQuery.docs.isNotEmpty) {
+            final categoryId = categoryQuery.docs.first.id;
+            query = query.where('categoriaId', isEqualTo: categoryId);
+          }
+        }
+      } catch (e) {
+        print("Error al obtener o aplicar filtro de categoría: $e");
+        // Aquí podrías manejar el error de la consulta de categorías,
+        // por ejemplo, mostrando un mensaje al usuario o estableciendo un estado de error.
+        return; // Importante salir de la función si hubo un error crítico.
       }
+
+      try {
+        final result = await query.get();
+        setState(() {
+          _products =
+              result.docs.map((doc) => Product.fromFirestore(doc)).toList();
+        });
+      } catch (e) {
+        print("Error al obtener la lista de productos filtrados: $e");
+        // Aquí podrías manejar el error de la consulta de productos,
+        // mostrando un mensaje o estableciendo un estado de error.
+      }
+    } catch (e) {
+      print("Error general en _filterProductsByCategory: $e");
+      // Este catch más general podría capturar errores inesperados fuera de las consultas.
     }
-
-    final result = await query.get();
-    setState(() {
-      _products = result.docs.map((doc) => Product.fromFirestore(doc)).toList();
-    });
   }
-
 // Variables de clase que necesitarás
 
   Widget _buildBusinessesSection() {
-  return StreamBuilder<QuerySnapshot>(
-    stream: _firestore.collection('negocios').snapshots(),
-    builder: (context, snapshot) {
-      if (!snapshot.hasData) {
-        return SizedBox(
-          height: 120,
-          child: Center(child: CircularProgressIndicator()),
-        );
-      }
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestore.collection('negocios').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return SizedBox(
+            height: 120,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-      final businesses = snapshot.data!.docs;
+        final businesses = snapshot.data!.docs;
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text('Brands',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ),
-          SizedBox(
-            height: 60,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: businesses.length,
-              itemBuilder: (context, index) {
-                final business = businesses[index].data() as Map<String, dynamic>;
-                final logoUrl = business['logo'] as String?;
-                final isDarkMode = Get.isDarkMode;
-                final defaultImage = isDarkMode
-                    ? AssetImage('assets/images/moon_blanco.png') as ImageProvider<Object>?
-                    : AssetImage('assets/images/moon_negro.png') as ImageProvider<Object>?;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text('Brands',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            SizedBox(
+              height: 60,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: businesses.length,
+                itemBuilder: (context, index) {
+                  final business =
+                      businesses[index].data() as Map<String, dynamic>;
+                  final logoUrl = business['logo'] as String?;
+                  final isDarkMode = Get.isDarkMode;
+                  final defaultImage = isDarkMode
+                      ? AssetImage('assets/images/moon_blanco.png')
+                          as ImageProvider<Object>?
+                      : AssetImage('assets/images/moon_negro.png')
+                          as ImageProvider<Object>?;
 
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedBusiness = businesses[index].id;
-                    });
-                  },
-                  child: Container(
-                    width: 60,
-                    margin: EdgeInsets.symmetric(horizontal: 8),
-                    child: Column(
-                      children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundImage: logoUrl != null && logoUrl.isNotEmpty
-                              ? CachedNetworkImageProvider(logoUrl)
-                              : defaultImage,
-                          onBackgroundImageError: (exception, stackTrace) =>
-                              print('Error loading image: $exception'),
-                        ),
-                        //SizedBox(height: 8),
-                        // Text(business['nombreEmpresa'] ?? '',
-                        //   textAlign: TextAlign.center,
-                        //   maxLines: 2,
-                        //   overflow: TextOverflow.ellipsis),
-                      ],
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedBusiness = businesses[index].id;
+                      });
+                    },
+                    child: Container(
+                      width: 60,
+                      margin: EdgeInsets.symmetric(horizontal: 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(
+                            radius: 30,
+                            backgroundImage:
+                                logoUrl != null && logoUrl.isNotEmpty
+                                    ? CachedNetworkImageProvider(logoUrl)
+                                    : defaultImage,
+                            onBackgroundImageError: (exception, stackTrace) =>
+                                print('Error loading image: $exception'),
+                          ),
+                          //SizedBox(height: 8),
+                          // Text(business['nombreEmpresa'] ?? '',
+                          //   textAlign: TextAlign.center,
+                          //   maxLines: 2,
+                          //   overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
-      );
-    },
-  );
-}
-
-Widget _buildRecentSearches() {
-  if (_recentSearches.isEmpty) {
-    return SizedBox.shrink();
-  }
-  return Container(
-    padding: EdgeInsets.all(8),
-    height: 60,
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: _recentSearches.length,
-      itemBuilder: (context, index) {
-        final search = _recentSearches[index];
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: InkWell( // Envuelve el Chip con InkWell
-            onTap: () {
-              _searchProducts(search);
-            },
-            child: Chip(
-              label: Text(search),
-              onDeleted: () {
-                setState(() {
-                  _recentSearches.removeAt(index);
-                });
-              },
-              deleteIcon: Icon(Icons.close, size: 18),
-            ),
-          ),
+          ],
         );
       },
-    ),
-  );
-}
+    );
+  }
+
+  Widget _buildRecentSearches() {
+    if (_recentSearches.isEmpty) {
+      return SizedBox.shrink();
+    }
+    return Container(
+      padding: EdgeInsets.all(8),
+      height: 60,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _recentSearches.length,
+        itemBuilder: (context, index) {
+          final search = _recentSearches[index];
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: InkWell(
+              // Envuelve el Chip con InkWell
+              onTap: () {
+                _searchProducts(search);
+              },
+              child: Chip(
+                label: Text(search),
+                onDeleted: () {
+                  setState(() {
+                    _recentSearches.removeAt(index);
+                  });
+                },
+                deleteIcon: Icon(Icons.close, size: 18),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
 //  Widget _buildProductsSection() {
 //   return Column(
@@ -549,14 +565,28 @@ Widget _buildRecentSearches() {
 //   );
 // }
 
-
- Future<void> _loadInitialProducts() async {
-    // Lógica para cargar los productos iniciales
-    _getFilteredProducts().first.then((snapshot) {
-      setState(() {
-        _displayedProducts = snapshot.docs;
+  Future<void> _loadInitialProducts() async {
+    try {
+      // Lógica para cargar los productos iniciales
+      await _getFilteredProducts().first.then((snapshot) {
+        try {
+          setState(() {
+            _displayedProducts = snapshot.docs;
+          });
+        } catch (e) {
+          print("Error en el setState de _loadInitialProducts: $e");
+          // Maneja el error al actualizar el estado, por ejemplo,
+          // si el widget ya no está en el árbol.
+        }
+      }).catchError((error) {
+        print("Error al obtener el primer snapshot de productos: $error");
+        // Maneja el error al obtener el stream o el primer valor del stream.
+        // Podrías establecer un estado de error o intentar recargar los datos.
       });
-    });
+    } catch (e) {
+      print("Error general en _loadInitialProducts: $e");
+      // Captura cualquier error síncrono que pueda ocurrir.
+    }
   }
 
   Stream<QuerySnapshot> _getFilteredProducts() {
@@ -599,7 +629,8 @@ Widget _buildRecentSearches() {
 
   Future<void> _loadSimilarProducts(DocumentSnapshot product) async {
     final productData = product.data() as Map<String, dynamic>;
-    final List<String> categories = List<String>.from(productData['categorias'] ?? []);
+    final List<String> categories =
+        List<String>.from(productData['categorias'] ?? []);
 
     // Lógica para buscar productos similares basada en categorías y/o la última búsqueda
     Query query = FirebaseFirestore.instance.collection('productos');
@@ -607,7 +638,8 @@ Widget _buildRecentSearches() {
       query = query.where('categorias', arrayContainsAny: categories);
     }
     if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
-      query = query.where('searchKeywords', arrayContains: _lastSearchQuery!.toLowerCase());
+      query = query.where('searchKeywords',
+          arrayContains: _lastSearchQuery!.toLowerCase());
     }
     query = query.limit(10);
 
@@ -707,7 +739,8 @@ Widget _buildRecentSearches() {
                         onPressed: () {
                           // Lógica para agregar al carrito
                           Navigator.pop(context);
-                          _loadSimilarProducts(product); // Cargar similares al cerrar
+                          _loadSimilarProducts(
+                              product); // Cargar similares al cerrar
                         },
                         child: Text('AGREGAR AL CARRITO',
                             style: TextStyle(
@@ -733,46 +766,50 @@ Widget _buildRecentSearches() {
     });
   }
 
+  Widget _buildProductImage(Map<String, dynamic> productData) {
+    final isDarkMode = Get.isDarkMode;
+    final storeImgs = productData['storeImgs'] as List<dynamic>?;
+    final String? imageUrl = productData['imageUrl'];
+    final defaultImage = isDarkMode
+        ? 'assets/images/moon_negro.png'
+        : 'assets/images/moon_blanco.png';
 
-Widget _buildProductImage(Map<String, dynamic> productData) {
-  final isDarkMode = Get.isDarkMode;
-  final storeImgs = productData['storeImgs'] as List<dynamic>?;
-  final String? imageUrl = productData['imageUrl'];
-  final defaultImage =
-      isDarkMode ? 'assets/images/moon_negro.png' : 'assets/images/moon_blanco.png';
+    Widget imageWidget;
 
-  Widget imageWidget;
+    if (imageUrl?.isNotEmpty == true) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: imageUrl!,
+        fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
+        placeholder: (context, url) =>
+            Center(child: CircularProgressIndicator()),
+        errorWidget: (context, url, error) => Icon(Icons.error),
+      );
+    } else if (storeImgs != null &&
+        storeImgs.isNotEmpty &&
+        storeImgs[0]?.isNotEmpty == true) {
+      imageWidget = CachedNetworkImage(
+        imageUrl: storeImgs[0],
+        fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
+        placeholder: (context, url) =>
+            Center(child: CircularProgressIndicator()),
+        errorWidget: (context, url, error) => Icon(Icons.error),
+      );
+    } else {
+      imageWidget = Image.asset(
+        defaultImage,
+        fit: BoxFit
+            .fill, // Usar BoxFit.fill para estirar la imagen de relleno también
+      );
+    }
 
-  if (imageUrl?.isNotEmpty == true) {
-    imageWidget = CachedNetworkImage(
-      imageUrl: imageUrl!,
-      fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
-      placeholder: (context, url) => Center(child: CircularProgressIndicator()),
-      errorWidget: (context, url, error) => Icon(Icons.error),
-    );
-  } else if (storeImgs != null && storeImgs.isNotEmpty && storeImgs[0]?.isNotEmpty == true) {
-    imageWidget = CachedNetworkImage(
-      imageUrl: storeImgs[0],
-      fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
-      placeholder: (context, url) => Center(child: CircularProgressIndicator()),
-      errorWidget: (context, url, error) => Icon(Icons.error),
-    );
-  } else {
-    imageWidget = Image.asset(
-      defaultImage,
-      fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen de relleno también
+    return ClipRRect(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+      child: SizedBox(
+        width: double.infinity,
+        child: imageWidget,
+      ),
     );
   }
-
-  return ClipRRect(
-  borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-  child: SizedBox(
-    width: double.infinity,
-    child: imageWidget,
-  ),
-);
-
-}
 
   Widget _buildThemeAwarePlaceholder(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -831,7 +868,7 @@ Widget _buildProductImage(Map<String, dynamic> productData) {
 class ProductSearchDelegate extends SearchDelegate {
   final Function(DocumentSnapshot) onProductTap;
 
-   ProductSearchDelegate({required this.onProductTap});
+  ProductSearchDelegate({required this.onProductTap});
   @override
   List<Widget> buildActions(BuildContext context) {
     return [
@@ -869,7 +906,7 @@ class ProductSearchDelegate extends SearchDelegate {
     return _buildSearchResults(query);
   }
 
-   Widget _buildSearchResults(String searchQuery) {
+  Widget _buildSearchResults(String searchQuery) {
     if (searchQuery.isEmpty) {
       return const Center(
         child: Text('Busca algún producto'),
@@ -889,7 +926,8 @@ class ProductSearchDelegate extends SearchDelegate {
         final results = snapshot.data!.docs;
 
         if (results.isEmpty) {
-          return Center(child: Text('No se encontraron productos para "$searchQuery"'));
+          return Center(
+              child: Text('No se encontraron productos para "$searchQuery"'));
         }
 
         return ListView.builder(
@@ -904,14 +942,15 @@ class ProductSearchDelegate extends SearchDelegate {
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => const CircularProgressIndicator(),
+                placeholder: (context, url) =>
+                    const CircularProgressIndicator(),
                 errorWidget: (context, url, error) => const Icon(Icons.error),
               ),
               title: Text(data['nombre'] ?? ''),
               subtitle:
                   Text('\$${data['precio']?.toStringAsFixed(2) ?? '0.00'}'),
               onTap: () {
-                 close(context, null);
+                close(context, null);
                 onProductTap(product);
               },
             );
@@ -943,7 +982,8 @@ class ProductListSection extends StatefulWidget {
   const ProductListSection({
     Key? key,
     this.selectedCategory,
-    required this.showProductDetails, this.getProductQuery,
+    required this.showProductDetails,
+    this.getProductQuery,
   }) : super(key: key);
 
   @override
@@ -971,80 +1011,87 @@ class _ProductListSectionState extends State<ProductListSection> {
     super.dispose();
   }
 
- @override
-void didUpdateWidget(covariant ProductListSection oldWidget) {
-  super.didUpdateWidget(oldWidget);
-  if (widget.selectedCategory != oldWidget.selectedCategory) {
-    print('Categoría cambió de ${oldWidget.selectedCategory} a ${widget.selectedCategory}');
-    _products.clear();
-    _lastDocument = null;
-    _hasMore = true;
-    _loadMoreProducts();
-  }
-}
-
-  void _scrollListener() {
-    if (!_isLoading && _hasMore && _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+  @override
+  void didUpdateWidget(covariant ProductListSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedCategory != oldWidget.selectedCategory) {
+      print(
+          'Categoría cambió de ${oldWidget.selectedCategory} a ${widget.selectedCategory}');
+      _products.clear();
+      _lastDocument = null;
+      _hasMore = true;
       _loadMoreProducts();
     }
   }
- 
- Future<void> _loadMoreProducts() async {
-  if (_isLoading) return;
-  setState(() {
-    _isLoading = true;
-  });
 
-  Query<Map<String, dynamic>>? baseQuery = widget.getProductQuery?.call();
-  if (baseQuery == null) {
+  void _scrollListener() {
+    if (!_isLoading &&
+        _hasMore &&
+        _scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreProducts();
+    }
+  }
+
+  Future<void> _loadMoreProducts() async {
+    if (_isLoading) return;
     setState(() {
-      _isLoading = false;
-      _hasMore = false;
+      _isLoading = true;
     });
-    return;
-  }
 
-  Query<Map<String, dynamic>> paginatedQuery = baseQuery.limit(_limit);
+    Query<Map<String, dynamic>>? baseQuery = widget.getProductQuery?.call();
+    if (baseQuery == null) {
+      setState(() {
+        _isLoading = false;
+        _hasMore = false;
+      });
+      return;
+    }
 
-  if (_lastDocument != null && _products.isNotEmpty) { // Añadimos una verificación si _products no está vacío
-    paginatedQuery = paginatedQuery.startAfterDocument(_lastDocument!);
-  }
+    Query<Map<String, dynamic>> paginatedQuery = baseQuery.limit(_limit);
 
-  try {
-    final QuerySnapshot<Map<String, dynamic>> snapshot = await paginatedQuery.get();
-    List<DocumentSnapshot> newProducts = [];
-    for (var doc in snapshot.docs) {
-      if (doc.data().containsKey('categoriaId') || widget.selectedCategory == 'Todos') {
-        newProducts.add(doc);
-      } else {
-        print('Producto omitido (sin categoriaId): ${doc.id}');
+    if (_lastDocument != null && _products.isNotEmpty) {
+      // Añadimos una verificación si _products no está vacío
+      paginatedQuery = paginatedQuery.startAfterDocument(_lastDocument!);
+    }
+
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snapshot =
+          await paginatedQuery.get();
+      List<DocumentSnapshot> newProducts = [];
+      for (var doc in snapshot.docs) {
+        if (doc.data().containsKey('categoriaId') ||
+            widget.selectedCategory == 'Todos') {
+          newProducts.add(doc);
+        } else {
+          print('Producto omitido (sin categoriaId): ${doc.id}');
+        }
       }
-    }
 
-    if (newProducts.isNotEmpty) {
-      _lastDocument = newProducts.last;
-      _products.addAll(newProducts);
-    } else {
-      _hasMore = false;
+      if (newProducts.isNotEmpty) {
+        _lastDocument = newProducts.last;
+        _products.addAll(newProducts);
+      } else {
+        _hasMore = false;
+      }
+    } catch (e) {
+      print('Error al cargar productos: $e');
+      // Manejar el error aquí
+      _hasMore = false; // Importante para detener intentos de carga
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
-  } catch (e) {
-    print('Error al cargar productos: $e');
-    // Manejar el error aquí
-    _hasMore = false; // Importante para detener intentos de carga
-  } finally {
-    setState(() {
-      _isLoading = false;
-    });
   }
-}
-  
 
   Widget _buildProductImage(Map<String, dynamic> productData) {
     final isDarkMode = Get.isDarkMode;
     final storeImgs = productData['storeImgs'] as List<dynamic>?;
     final String? imageUrl = productData['imageUrl'];
-    final defaultImage =
-        isDarkMode ? 'assets/images/moon_negro.png' : 'assets/images/moon_blanco.png';
+    final defaultImage = isDarkMode
+        ? 'assets/images/moon_negro.png'
+        : 'assets/images/moon_blanco.png';
 
     Widget imageWidget;
 
@@ -1052,14 +1099,18 @@ void didUpdateWidget(covariant ProductListSection oldWidget) {
       imageWidget = CachedNetworkImage(
         imageUrl: imageUrl!,
         fit: BoxFit.cover,
-        placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+        placeholder: (context, url) =>
+            Center(child: CircularProgressIndicator()),
         errorWidget: (context, url, error) => Icon(Icons.error),
       );
-    } else if (storeImgs != null && storeImgs.isNotEmpty && storeImgs[0]?.isNotEmpty == true) {
+    } else if (storeImgs != null &&
+        storeImgs.isNotEmpty &&
+        storeImgs[0]?.isNotEmpty == true) {
       imageWidget = CachedNetworkImage(
         imageUrl: storeImgs[0],
         fit: BoxFit.cover,
-        placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+        placeholder: (context, url) =>
+            Center(child: CircularProgressIndicator()),
         errorWidget: (context, url, error) => Icon(Icons.error),
       );
     } else {
@@ -1077,8 +1128,9 @@ void didUpdateWidget(covariant ProductListSection oldWidget) {
 
   Widget _buildThemeAwarePlaceholder(BuildContext context) {
     final isDarkMode = Get.isDarkMode;
-    final defaultImage =
-        isDarkMode ? 'assets/images/moon_negro.png' : 'assets/images/moon_blanco.png';
+    final defaultImage = isDarkMode
+        ? 'assets/images/moon_negro.png'
+        : 'assets/images/moon_blanco.png';
     return Image.asset(
       defaultImage,
       fit: BoxFit.contain,
@@ -1087,122 +1139,129 @@ void didUpdateWidget(covariant ProductListSection oldWidget) {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 8),
-          child: Text(
-            'Catálogo ${widget.selectedCategory != 'Todos' && widget.selectedCategory != null ? '(${widget.selectedCategory})' : ''}',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+    return SliverPadding(
+      padding: EdgeInsets.all(16),
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          childAspectRatio: 0.68,
         ),
-        Expanded(
-          child: GridView.builder(
-            controller: _scrollController,
-            padding: EdgeInsets.all(16),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 0.68,
-            ),
-            itemCount: _products.length + (_hasMore ? 1 : 0),
-            itemBuilder: (context, index) {
-              if (index < _products.length) {
-                final product = _products[index];
-                final productData = product.data() as Map<String, dynamic>;
-                final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
-                final hasImages =
-                    (productData['imagen']?.isNotEmpty == true) ||
-                        storeImgs.isNotEmpty;
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index < _products.length) {
+              final product = _products[index];
+              final productData = product.data() as Map<String, dynamic>;
+              final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
+              final hasImages = (productData['imagen']?.isNotEmpty == true) ||
+                  storeImgs.isNotEmpty;
 
-                return GestureDetector(
-                  onTap: () => widget.showProductDetails(product),
-                  child: Card(
-                    elevation: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).cardColor,
+              return GestureDetector(
+                onTap: () => widget.showProductDetails(product),
+                child: Card(
+                  elevation: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                          ),
+                          child: hasImages
+                              ? _buildProductImage(productData)
+                              : _buildThemeAwarePlaceholder(context),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              productData['nombre'] ?? 'Sin nombre',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            child: hasImages
-                                ? _buildProductImage(productData)
-                                : _buildThemeAwarePlaceholder(context),
-                          ),
+                            SizedBox(height: 4),
+                            Text(
+                              '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
+                              style:
+                                  TextStyle(color: Colors.green, fontSize: 15),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Disponibles: ${productData['cantidad'] ?? 0}',
+                              style: TextStyle(
+                                  color: productData['cantidad'] > 0
+                                      ? Colors.black54
+                                      : Colors.red,
+                                  fontSize: 14),
+                            ),
+                          ],
                         ),
-                        Padding(
-                          padding: EdgeInsets.all(8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                productData['nombre'] ?? 'Sin nombre',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
-                                style: TextStyle(color: Colors.green, fontSize: 15),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Disponibles: ${productData['cantidad'] ?? 0}',
-                                style: TextStyle(
-                                    color: productData['cantidad'] > 0
-                                        ? Colors.black54
-                                        : Colors.red,
-                                    fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                );
-              } else if (_hasMore) {
-                return Center(child: CircularProgressIndicator());
-              } else {
-                return SizedBox.shrink();
-              }
-            },
+                ),
+              );
+            } else if (_hasMore) {
+              return Center(child: CircularProgressIndicator());
+            } else {
+              return SizedBox.shrink();
+            }
+          },
+          childCount: _products.length + (_hasMore ? 1 : 0),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
+  final VoidCallback onSearchTap;
+
+  _SearchBarDelegate({required this.onSearchTap});
+
+  @override
+  double get maxExtent => 44.0; // Altura del buscador
+
+  @override
+  double get minExtent => 44.0; // Altura del buscador cuando está pegado
+
+  @override
+  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => false;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return GestureDetector(
+      onTap: onSearchTap,
+      child: Container(
+        color: Colors.white, // Color de fondo del buscador
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                child: Icon(Icons.search, color: Colors.grey),
+              ),
+              Text(
+                'Buscar productos...',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
           ),
         ),
-        if (_isLoading) Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-        if (!_hasMore && _products.isEmpty) Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Center(
-            child: Text(
-              widget.selectedCategory == 'Todos'
-                  ? 'No hay productos disponibles'
-                  : 'No hay productos en esta categoría',
-              style: TextStyle(fontSize: 16),
-            ),
-          ),
-        ),
-        if (!_hasMore && _products.isNotEmpty) Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Center(
-            child: Text(
-              'No hay más productos para cargar.',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
