@@ -48,7 +48,7 @@ class _InventoryPageState extends State<InventoryPage> {
   // Variables adicionales para el estado
   String? selectedCategoryId;
   bool _isSaving = false;
-
+  bool _isSavingBusiness = false;
   // Controladores para los productos
   List<Map<String, dynamic>> productControllers = [
     {
@@ -132,22 +132,26 @@ class _InventoryPageState extends State<InventoryPage> {
         .get();
 
     return query.docs.map((doc) {
+      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
       return {
         'id': doc.id, // ID del producto
-        'codigo': doc['codigo'],
-        'nombre': doc['nombre'],
-        'precio': doc['precio'],
-        'cantidad': doc['cantidad'],
-        'imagen': doc['imagen'],
+        'codigo': data['codigo'],
+        'nombre': data['nombre'],
+        'precio': data['precio'],
+        'cantidad': data['cantidad'],
+        'imagen': data['imagen'],
+        'storeImgs': data.containsKey('storeImgs')
+            ? (data['storeImgs'] as List<dynamic>).cast<String>()
+            : [],
       };
     }).toList();
   }
 
   // Cargar la imagen desde la galería o la cámara
-  Future<List<File>?> _pickImage({bool multiple = false}) async {
+  Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
 
-    return await showModalBottomSheet<List<File>>(
+    final File? pickedFile = await showModalBottomSheet<File>(
       context: context,
       builder: (BuildContext context) {
         return SafeArea(
@@ -172,9 +176,8 @@ class _InventoryPageState extends State<InventoryPage> {
                   final List<XFile>? pickedFiles =
                       await picker.pickMultiImage();
                   if (pickedFiles != null && pickedFiles.isNotEmpty) {
-                    final files =
-                        pickedFiles.map((file) => File(file.path)).toList();
-                    Navigator.of(context).pop(multiple ? files : [files.first]);
+                    Navigator.of(context).pop(File(pickedFiles.first
+                        .path)); // Tomar la primera imagen si se seleccionan múltiples
                   } else {
                     Navigator.of(context).pop();
                   }
@@ -191,7 +194,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     imageQuality: 90,
                   );
                   if (pickedFile != null) {
-                    Navigator.of(context).pop([File(pickedFile.path)]);
+                    Navigator.of(context).pop(File(pickedFile.path));
                   } else {
                     Navigator.of(context).pop();
                   }
@@ -203,6 +206,34 @@ class _InventoryPageState extends State<InventoryPage> {
         );
       },
     );
+
+    // Actualizar el estado _image con el archivo seleccionado
+    setState(() {
+      _image = pickedFile;
+    });
+  }
+
+  Future<List<File>?> _pickMultipleImages() async {
+    final ImagePicker picker = ImagePicker();
+    final List<XFile>? pickedFiles = await picker.pickMultiImage();
+    if (pickedFiles != null && pickedFiles.isNotEmpty) {
+      return pickedFiles.map((file) => File(file.path)).toList();
+    }
+    return null;
+  }
+
+  Future<File?> _pickSingleImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? pickedFile = await picker.pickImage(
+      source: ImageSource.gallery, // O ImageSource.camera
+      maxWidth: 1800,
+      maxHeight: 1800,
+      imageQuality: 90,
+    );
+    if (pickedFile != null) {
+      return File(pickedFile.path);
+    }
+    return null;
   }
 
 //  Subir imagen a Firebase Storage
@@ -230,34 +261,56 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // Agregar negocio a Firestore
   Future<void> _addBusiness() async {
-    if (_companyNameController.text.isEmpty ||
-        _ownerNameController.text.isEmpty ||
-        _phoneController.text.isEmpty) {
-      Get.snackbar('Error', 'Por favor llena todos los campos obligatorios');
-      return;
-    }
-
-    String? logoUrl;
-    if (_image != null) {
-      logoUrl = await _uploadImageToFirebase(_image!);
-      if (logoUrl == null) {
-        Get.snackbar('Error', 'No se pudo subir la imagen');
-        return;
-      }
-    } else {
-      logoUrl =
-          'https://ejemplo.com/imagen_predeterminada.png'; // URL de imagen predeterminada
-    }
-
-    await FirebaseFirestore.instance.collection('negocios').add({
-      'nombreEmpresa': _companyNameController.text,
-      'nombreDueno': _ownerNameController.text,
-      'telefono': _phoneController.text,
-      'logo': logoUrl, // URL de la imagen o imagen predeterminada
+    setState(() {
+      _isSavingBusiness = true; // Inicia el estado de carga
     });
 
-    Get.snackbar('Éxito', 'Negocio agregado correctamente');
-    _clearForm();
+    try {
+      if (_companyNameController.text.isEmpty ||
+          _ownerNameController.text.isEmpty ||
+          _phoneController.text.isEmpty) {
+        Get.snackbar('Error', 'Por favor llena todos los campos obligatorios');
+        setState(() {
+          _isSavingBusiness =
+              false; // Detiene el estado de carga en caso de error
+        });
+        return;
+      }
+
+      String? logoUrl;
+      if (_image != null) {
+        logoUrl = await _uploadImageToFirebase(_image!);
+        if (logoUrl == null) {
+          Get.snackbar('Error', 'No se pudo subir la imagen');
+          setState(() {
+            _isSavingBusiness =
+                false; // Detiene el estado de carga en caso de error
+          });
+          return;
+        }
+      } else {
+        logoUrl =
+            'https://ejemplo.com/imagen_predeterminada.png'; // URL de imagen predeterminada
+      }
+
+      await FirebaseFirestore.instance.collection('negocios').add({
+        'nombreEmpresa': _companyNameController.text,
+        'nombreDueno': _ownerNameController.text,
+        'telefono': _phoneController.text,
+        'logo': logoUrl, // URL de la imagen o imagen predeterminada
+        'activo':
+            true, // Campo de bandera "activo" con valor predeterminado true
+      });
+
+      Get.snackbar('Éxito', 'Negocio agregado correctamente');
+      _clearForm();
+    } catch (error) {
+      Get.snackbar('Error', 'Hubo un problema al guardar el negocio: $error');
+    } finally {
+      setState(() {
+        _isSavingBusiness = false; // Finaliza el estado de carga
+      });
+    }
   }
 
   void _clearForm() {
@@ -706,6 +759,7 @@ class _InventoryPageState extends State<InventoryPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
+            print('Imágenes existentes al abrir el modal: $_existingImageUrls');
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -716,18 +770,31 @@ class _InventoryPageState extends State<InventoryPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Editar Producto',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Editar Producto',
+                              style: TextStyle(
+                                  fontSize: 20, fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: Icon(Icons.close),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                          ),
+                        ],
+                      ),
                       SizedBox(height: 16),
 
                       // Imagen principal
-                      Text('Imagen Principal', style: TextStyle(fontSize: 16)),
+                      Text(
+                          'Imagen Principal de Inventario (no es visible en MoonStore)',
+                          style: TextStyle(fontSize: 16)),
                       GestureDetector(
                         onTap: () async {
-                          final images = await _pickImage(multiple: false);
-                          if (images != null && images.isNotEmpty) {
-                            setState(() => _newMainImage = images.first);
+                          final image = await _pickSingleImage();
+                          if (image != null) {
+                            setState(() => _newMainImage = image);
                           }
                         },
                         child: Container(
@@ -749,7 +816,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       SizedBox(height: 16),
 
                       // Imágenes adicionales
-                      Text('Imágenes Adicionales',
+                      Text('Imágenes Para la MoonStore',
                           style: TextStyle(fontSize: 16)),
                       SizedBox(height: 8),
 
@@ -831,7 +898,8 @@ class _InventoryPageState extends State<InventoryPage> {
                           IconButton(
                             icon: Icon(Icons.add_a_photo),
                             onPressed: () async {
-                              final images = await _pickImage(multiple: true);
+                              final images =
+                                  await _pickMultipleImages(); // Usar la función de selección múltiple
                               if (images != null && images.isNotEmpty) {
                                 setState(() {
                                   _newAdditionalImages.addAll(images);
@@ -842,116 +910,138 @@ class _InventoryPageState extends State<InventoryPage> {
                         ],
                       ),
 
-                      SizedBox(height: 24),
+                      SizedBox(height: 14),
 
                       // Campos de texto
                       TextField(
                         controller: _codigoController,
                         decoration: InputDecoration(labelText: 'Código'),
                       ),
+                      SizedBox(height: 14),
+
                       TextField(
                         controller: _nombreController,
                         decoration: InputDecoration(labelText: 'Nombre'),
                       ),
+                      SizedBox(height: 14),
+
                       TextField(
                         controller: _precioController,
                         decoration: InputDecoration(labelText: 'Precio'),
                         keyboardType:
                             TextInputType.numberWithOptions(decimal: true),
                       ),
+                      SizedBox(height: 14),
+
                       TextField(
                         controller: _cantidadController,
                         decoration: InputDecoration(labelText: 'Cantidad'),
                         keyboardType: TextInputType.number,
                       ),
 
-                      SizedBox(height: 24),
+                      SizedBox(height: 14),
 
                       // Botón de guardar
-                      ElevatedButton(
-                        onPressed: _isSaving
-                            ? null
-                            : () async {
-                                setState(() => _isSaving = true);
-                                try {
-                                  // Subir nueva imagen principal si se seleccionó
-                                  String? mainImageUrl = product['imagen'];
-                                  if (_newMainImage != null) {
-                                    mainImageUrl = await _uploadImage(
-                                      _newMainImage!,
-                                      'products/${product['negocioId']}/${product['codigo']}_main_${DateTime.now().millisecondsSinceEpoch}',
-                                    );
-                                  }
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () async {
+                                  setState(() => _isSaving = true);
+                                  try {
+                                    // Subir nueva imagen principal si se seleccionó
+                                    String? mainImageUrl = product['imagen'];
+                                    if (_newMainImage != null) {
+                                      mainImageUrl = await _uploadImage(
+                                        _newMainImage!,
+                                        'products/${product['negocioId']}/${product['codigo']}_main_${DateTime.now().millisecondsSinceEpoch}',
+                                      );
+                                    }
 
-                                  // Subir nuevas imágenes adicionales
-                                  List<String> newImageUrls = [];
-                                  for (var image in _newAdditionalImages) {
-                                    final url = await _uploadImage(
-                                      image,
-                                      'products/${product['negocioId']}/${product['codigo']}_additional_${DateTime.now().millisecondsSinceEpoch}',
-                                    );
-                                    newImageUrls.add(url);
-                                  }
+                                    // Subir nuevas imágenes adicionales
+                                    List<String> newImageUrls = [];
+                                    for (var image in _newAdditionalImages) {
+                                      final url = await _uploadImage(
+                                        image,
+                                        'products/${product['negocioId']}/${product['codigo']}_additional_${DateTime.now().millisecondsSinceEpoch}',
+                                      );
+                                      newImageUrls.add(url);
+                                    }
 
-                                  // Generar keywords actualizadas
-                                  final searchKeywords =
-                                      _generateProductKeywords(
-                                          _nombreController.text);
+                                    // Generar keywords actualizadas
+                                    final searchKeywords =
+                                        _generateProductKeywords(
+                                            _nombreController.text);
 
-                                  // Actualizar producto
-                                  await FirebaseFirestore.instance
-                                      .collection('productos')
-                                      .doc(product['id'])
-                                      .update({
-                                    'codigo': _codigoController.text,
-                                    'nombre': _nombreController.text,
-                                    'precio':
-                                        double.parse(_precioController.text),
-                                    'cantidad':
-                                        int.parse(_cantidadController.text),
-                                    'imagen': mainImageUrl,
-                                    'storeImgs': [
-                                      ..._existingImageUrls,
-                                      ...newImageUrls
-                                    ],
-                                    'searchKeywords': searchKeywords,
-                                    'ultimaActualizacion':
-                                        FieldValue.serverTimestamp(),
-                                  });
+                                    // Actualizar producto
+                                    await FirebaseFirestore.instance
+                                        .collection('productos')
+                                        .doc(product['id'])
+                                        .update({
+                                      'codigo': _codigoController.text,
+                                      'nombre': _nombreController.text,
+                                      'precio':
+                                          double.parse(_precioController.text),
+                                      'cantidad':
+                                          int.parse(_cantidadController.text),
+                                      'imagen': mainImageUrl,
+                                      'storeImgs': [
+                                        ..._existingImageUrls,
+                                        ...newImageUrls
+                                      ],
+                                      'searchKeywords': searchKeywords,
+                                      'ultimaActualizacion':
+                                          FieldValue.serverTimestamp(),
+                                    });
 
-                                  if (mounted) {
-                                    Navigator.of(context).pop();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content: Text(
-                                              'Producto actualizado correctamente')),
-                                    );
+                                    if (mounted) {
+                                      Navigator.of(context).pop();
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                'Producto actualizado correctamente')),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                'Error al actualizar: $e')),
+                                      );
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isSaving = false);
+                                    }
                                   }
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                          content:
-                                              Text('Error al actualizar: $e')),
-                                    );
-                                  }
-                                } finally {
-                                  if (mounted) {
-                                    setState(() => _isSaving = false);
-                                  }
-                                }
-                              },
-                        child: _isSaving
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : Text('Guardar Cambios'),
+                                },
+                          child: _isSaving
+                              ? Row(
+                                  // Centra el CircularProgressIndicator y el texto
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                                Colors.white),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                        width:
+                                            8), // Espacio entre el indicador y el texto
+                                    Text('Guardando...'),
+                                  ],
+                                )
+                              : Text('Guardar Cambios'),
+                        ),
                       ),
                     ],
                   ),
@@ -1214,7 +1304,6 @@ class _InventoryPageState extends State<InventoryPage> {
                 Expanded(
                   flex: 3,
                   child: Container(
-                    color: Colors.grey[200],
                     padding: EdgeInsets.all(16.0),
                     child: showForm
                         ? _buildBusinessForm()
@@ -1310,19 +1399,20 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
           ),
           SizedBox(
-            height: 50,
+            height: 20,
           ),
-          Text('Logo (Opcional)'),
+          Text('Logo (Sera Visible en MoonStore)'),
           SizedBox(height: 8.0),
           GestureDetector(
             onTap: _pickImage,
-            child: Container(
-              height: 150,
-              width: 150,
-              color: Colors.grey[300],
-              child: _image == null
-                  ? Icon(Icons.add_a_photo, size: 50)
-                  : Image.file(_image!, fit: BoxFit.cover),
+            child: Center(
+              child: Container(
+                height: 150,
+                width: 150,
+                child: _image == null
+                    ? Icon(Icons.add_a_photo, size: 50)
+                    : Image.file(_image!, fit: BoxFit.cover),
+              ),
             ),
           ),
           SizedBox(height: 16.0),
@@ -1345,8 +1435,27 @@ class _InventoryPageState extends State<InventoryPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _addBusiness,
-              child: Text('Guardar Negocio'),
+              onPressed:
+                  _isSavingBusiness // Utiliza una variable booleana para el estado de carga
+                      ? null
+                      : _addBusiness,
+              child: _isSavingBusiness
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Guardando...'),
+                      ],
+                    )
+                  : Text('Guardar Negocio'),
             ),
           ),
         ],
@@ -1367,91 +1476,164 @@ class _InventoryPageState extends State<InventoryPage> {
               color: Theme.of(context).colorScheme.onBackground,
             ),
           ),
-
-          // Selector de negocio (existente)
-          StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _getBusinesses(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) return Text('Error: ${snapshot.error}');
-              if (!snapshot.hasData) return CircularProgressIndicator();
-
-              return DropdownButton<String>(
-                value: selectedBusinessId,
-                onChanged: (String? newValue) =>
-                    setState(() => selectedBusinessId = newValue),
-                items: snapshot.data!
-                    .map((business) => DropdownMenuItem<String>(
-                          value: business['id'],
-                          child: Text(business['nombreEmpresa']),
-                        ))
-                    .toList(),
-                hint: Text('Seleccionar negocio'),
-              );
-            },
-          ),
-
           SizedBox(height: 16.0),
+          SizedBox(
+            width: double.infinity,
+            child: Card(
+              elevation: 2.0,
+              margin: EdgeInsets.symmetric(vertical: 8.0),
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Selector de negocio
+                    StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: _getBusinesses(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError)
+                          return Text('Error: ${snapshot.error}');
+                        if (!snapshot.hasData)
+                          return CircularProgressIndicator();
 
-          // Selector de categoría (nuevo)
-          StreamBuilder<QuerySnapshot>(
-            stream:
-                FirebaseFirestore.instance.collection('categories').snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Text('Error al cargar categorías: ${snapshot.error}');
-              }
+                        List<DropdownMenuItem<String>> items = [
+                          DropdownMenuItem<String>(
+                            value: null, // Valor para "Sin negocio"
+                            child: Text(
+                              'Sin negocio',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ),
+                          ...snapshot.data!
+                              .map((business) => DropdownMenuItem<String>(
+                                    value: business['id'],
+                                    child: Text(
+                                      business['nombreEmpresa'],
+                                      style: TextStyle(
+                                        color: selectedBusinessId == null
+                                            ? Colors.grey
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                  ))
+                        ];
 
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return CircularProgressIndicator();
-              }
+                        return SizedBox(
+                          width: double.infinity,
+                          child: Opacity(
+                            opacity: selectedBusinessId == null ? 0.5 : 1.0,
+                            child: Stack(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 24.0),
+                                  child: DropdownButton<String>(
+                                    isExpanded: true,
+                                    value: selectedBusinessId,
+                                    onChanged: (String? newValue) => setState(
+                                        () => selectedBusinessId = newValue),
+                                    items: items,
+                                    hint: Text(
+                                      'Seleccionar negocio',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                    underline: Container(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: 16.0),
 
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return DropdownButton<String>(
-                  value: selectedCategoryId,
-                  onChanged: (String? newValue) =>
-                      setState(() => selectedCategoryId = newValue),
-                  items: [
-                    DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('No hay categorías disponibles',
-                          style: TextStyle(color: Colors.grey)),
+                    // Selector de categoría
+                    Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(
+                              right: 24.0), // Espacio para la flecha
+                          child: StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('categories')
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return Text(
+                                    'Error al cargar categorías: ${snapshot.error}');
+                              }
+
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return CircularProgressIndicator();
+                              }
+
+                              String? dropdownValue = selectedCategoryId;
+                              List<DropdownMenuItem<String>> items = [];
+                              String hintText = 'Seleccionar categoría';
+                              TextStyle hintStyle =
+                                  TextStyle(color: Colors.grey);
+
+                              if (!snapshot.hasData ||
+                                  snapshot.data!.docs.isEmpty) {
+                                items = [
+                                  DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('No hay categorías disponibles',
+                                        style: TextStyle(color: Colors.grey)),
+                                  ),
+                                ];
+                              } else {
+                                final categories =
+                                    snapshot.data!.docs.map((doc) {
+                                  return {
+                                    'id': doc.id,
+                                    'nombre': doc['nombre'],
+                                  };
+                                }).toList();
+
+                                items = [
+                                  DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('Sin categoría',
+                                        style: TextStyle(color: Colors.grey)),
+                                  ),
+                                  ...categories.map<DropdownMenuItem<String>>(
+                                      (category) {
+                                    return DropdownMenuItem<String>(
+                                      value: category['id'],
+                                      child: Text(category['nombre']),
+                                    );
+                                  }).toList(),
+                                ];
+                              }
+
+                              return DropdownButton<String>(
+                                isExpanded:
+                                    true, // Para que el texto ocupe todo el ancho
+                                value: dropdownValue,
+                                onChanged: (String? newValue) => setState(
+                                    () => selectedCategoryId = newValue),
+                                items: items,
+                                hint: Text(
+                                  hintText,
+                                  style: hintStyle,
+                                ),
+                                underline:
+                                    Container(), // Opcional: para quitar la línea inferior
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                  hint: Text('Seleccionar categoría'),
-                );
-              }
-
-              final categories = snapshot.data!.docs.map((doc) {
-                return {
-                  'id': doc.id,
-                  'nombre': doc['nombre'],
-                };
-              }).toList();
-
-              return DropdownButton<String>(
-                value: selectedCategoryId,
-                onChanged: (String? newValue) =>
-                    setState(() => selectedCategoryId = newValue),
-                items: [
-                  DropdownMenuItem<String>(
-                    value: null,
-                    child: Text('Sin categoría',
-                        style: TextStyle(color: Colors.grey)),
-                  ),
-                  ...categories.map<DropdownMenuItem<String>>((category) {
-                    return DropdownMenuItem<String>(
-                      value: category['id'],
-                      child: Text(category['nombre']),
-                    );
-                  }).toList(),
-                ],
-                hint: Text('Seleccionar categoría'),
-              );
-            },
+                ),
+              ),
+            ),
           ),
-
-          SizedBox(height: 16.0),
-
           ...productControllers.asMap().entries.map((entry) {
             int index = entry.key;
             var productController = entry.value;
@@ -1518,9 +1700,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                     ),
                     Text('Imagen principal', style: TextStyle(fontSize: 12)),
-
                     SizedBox(height: 8),
-
                     // Imágenes adicionales (storeImgs)
                     Text('Imágenes MoonStore (opcional)',
                         style: TextStyle(fontSize: 12)),
@@ -1559,7 +1739,6 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             );
           }).toList(),
-
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -1577,50 +1756,41 @@ class _InventoryPageState extends State<InventoryPage> {
               // Validar que se haya seleccionado un negocio
               if (selectedBusinessId == null) {
                 Get.snackbar('Error', 'Por favor selecciona un negocio');
-
                 return;
               }
-
-              // Validar que todos los campos estén llenos
-
-              // Imprimir la lista de productos antes de guardar
-              print('Lista de productos antes de guardar:');
-              for (var product in productsList) {
-                print('Código: ${product['codigo']}');
-                print('Nombre: ${product['nombre']}');
-                print('Precio: ${product['precio']}');
-                print('Cantidad: ${product['cantidad']}');
-                print('Imagen: ${product['imagen']}');
-                print('-------------------------');
-              }
-
-              // Si todo está correcto, guardar los productos
               _addProducts(selectedBusinessId!);
             },
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSaving
-                    ? null
-                    : () {
-                        if (selectedBusinessId == null) {
-                          Get.snackbar(
-                              'Error', 'Por favor selecciona un negocio');
-                          return;
-                        }
-                        _addProducts(selectedBusinessId!);
-                      },
-                child: _isSaving
-                    ? SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : Center(child: Text('Guardar Productos')),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: 48.0), // Ajusta la altura máxima según necesites
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSaving
+                      ? null
+                      : () {
+                          if (selectedBusinessId == null) {
+                            Get.snackbar(
+                                'Error', 'Por favor selecciona un negocio');
+                            return;
+                          }
+                          _addProducts(selectedBusinessId!);
+                        },
+                  child: _isSaving
+                      ? Center(
+                          // Centra el indicador de carga
+                          child: SizedBox(
+                            height:
+                                24.0, // Ajusta el tamaño del indicador si es necesario
+                            width: 24.0,
+                            child: CircularProgressIndicator(
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                        )
+                      : Center(child: Text('Guardar Productos')),
+                ),
               ),
             ),
           ),

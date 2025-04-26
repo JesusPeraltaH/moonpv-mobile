@@ -61,6 +61,7 @@ dependencies:
   rxdart: ^0.28.0
   animate_do: ^4.2.0
   flutter_pdfview: ^1.4.0
+  firebase_app_check: ^0.3.2+5
   #flutter_blue: ^0.8.0
   #blue_thermal_printer: ^1.2.3
   
