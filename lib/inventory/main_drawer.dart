@@ -109,7 +109,7 @@ class MainDrawer extends StatelessWidget {
               leading: const Icon(Icons.inventory),
               title: const Text('Inventario'),
               onTap: () {
-                Get.to(InventoryPage());
+                Get.to(() => InventoryPage());
               },
             ),
           ),

@@ -3,13 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:moonpv/inventory/Ajustes_screen.dart';
 import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/inventory/sales.dart';
+import 'package:moonpv/point_sale/barcode_scanner_point_sale.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:moonpv/screens/payment_management_screen.dart';
-import 'package:moonpv/services/barcode_scanner_page.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 
@@ -32,13 +34,16 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   final TextEditingController _quantityController =
       TextEditingController(text: '1');
   final FocusNode _codeFocusNode = FocusNode();
-  double conversionRate = 18.50;
+  double conversionRate = 18.0;
   double cambio = 0.00;
   double _changeAmount = 0.00;
+  TextEditingController _nuevoValorController = TextEditingController();
+  bool _isLoading = false;
 
   List<Map<String, dynamic>> _saleDetails = [];
   Map<String, dynamic>? _selectedProduct;
 
+  TextEditingController codigoController = TextEditingController();
   // BlueThermalPrinter printer = BlueThermalPrinter.instance;
   // List<BluetoothDevice> devices = [];
 
@@ -61,6 +66,13 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
       _isInitialized = true; // Marcar como inicializado
       _verificarAutenticacion(); // Verificar autenticación después de que el contexto esté listo
     }
+  }
+
+  @override
+  void dispose() {
+    print('SalespointNewSalePage dispose');
+    codigoController.dispose();
+    super.dispose();
   }
 
   Future<void> _getDevices() async {
@@ -333,7 +345,10 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     // Retrasar la ejecución hasta después de la construcción
     Future.microtask(() {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje)),
+        SnackBar(
+          content: Text(mensaje),
+          duration: Duration(seconds: 1),
+        ),
       );
     });
   }
@@ -375,8 +390,8 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
         return AlertDialog(
           title: Text('Finalizar Venta'),
           content: Container(
-            width: MediaQuery.of(context).size.width * 0.3,
-            height: MediaQuery.of(context).size.height * 0.3,
+            width: 500,
+            height: 200,
             child: StatefulBuilder(
               builder: (BuildContext context, StateSetter setStateDialog) {
                 return SingleChildScrollView(
@@ -495,27 +510,82 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
             ),
           ),
           actions: [
-            ElevatedButton.icon(
-              onPressed: () async {
-                await _guardarVenta(); // Guardar la venta en Firestore
-                for (var product in _saleDetails) {
-                  if (product['id'] != null) {
-                    _actualizarInventario(product['id'], product['cantidad']);
-                  } else {
-                    print(
-                        'El ID del producto es nulo para el producto: ${product['nombre']}');
-                  }
-                }
-                Navigator.of(context).pop(); // Cerrar el diálogo
+            StatefulBuilder(
+              builder: (BuildContext context, StateSetter setStateDialog) {
+                bool isLoading = false; // ← definimos aquí
+
+                return SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: isLoading
+                        ? null
+                        : () async {
+                            if (selectedCurrency == 'Pesos' &&
+                                    receivedAmount < grandTotal ||
+                                selectedCurrency == 'Dólares' &&
+                                    receivedAmount * conversionRate <
+                                        grandTotal) {
+                              // Mostrar aviso si la cantidad es menor
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                      'La cantidad es menor al total a pagar.'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              return; // Evitar continuar
+                            }
+
+                            setStateDialog(() {
+                              isLoading =
+                                  true; // ← Al presionar, activamos el loading
+                            });
+
+                            try {
+                              await _guardarVenta(); // Guardar la venta en Firestore
+
+                              final productosParaActualizar =
+                                  List<Map<String, dynamic>>.from(_saleDetails);
+
+                              for (var product in productosParaActualizar) {
+                                if (product['id'] != null) {
+                                  _actualizarInventario(
+                                      product['id'], product['cantidad']);
+                                } else {
+                                  print(
+                                      'El ID del producto es nulo para el producto: ${product['nombre']}');
+                                }
+                              }
+
+                              Navigator.of(context).pop(); // Cerrar el diálogo
+                            } catch (e) {
+                              print('Error finalizando venta: $e');
+                              setStateDialog(() {
+                                isLoading =
+                                    false; // Si falla, reactivamos el botón
+                              });
+                            }
+                          },
+                    icon: isLoading
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Icon(Icons.check, color: Colors.white),
+                    label: Text(
+                      isLoading ? 'Guardando...' : 'Finalizar Venta',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                    ),
+                  ),
+                );
               },
-              icon: Icon(Icons.check, color: Colors.white),
-              label: Text(
-                'Finalizar Venta',
-                style: TextStyle(color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-              ),
             ),
           ],
         );
@@ -716,6 +786,31 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     );
   }
 
+  Future<void> _scanForSale() async {
+    print('Antes de Navigator.push (Punto de Venta)');
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            BarcodeScannerPointSalePage(), // Usamos el nuevo escáner
+      ),
+    );
+
+    if (result != null && result is String) {
+      String scannedBarcode = result;
+
+      // Asigna el código escaneado al campo de texto
+      setState(() {
+        _codeController.text = scannedBarcode;
+      });
+
+      // Llama a la función para buscar el producto por el código
+      _searchProductByCode(scannedBarcode);
+    } else {
+      print('Escaneo cancelado o no se recibió código.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     int totalItems = _saleDetails.fold<int>(
@@ -733,7 +828,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Venta'),
+        title: Text('MoonPV'),
         leading: Builder(builder: (context) {
           return IconButton(
             icon: Icon(Icons.menu),
@@ -814,6 +909,16 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                   Padding(
                     padding: const EdgeInsets.only(left: 24.0),
                     child: ListTile(
+                      leading: const Icon(Icons.build),
+                      title: const Text('Ajustes'),
+                      onTap: () {
+                        Get.to(AjustesScreen());
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24.0),
+                    child: ListTile(
                       leading: Icon(Icons.person),
                       title: Text('Crear Usuarios'),
                       onTap: () {
@@ -824,7 +929,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                   Padding(
                     padding: const EdgeInsets.only(left: 24.0),
                     child: ListTile(
-                      leading: Icon(Icons.person),
+                      leading: Icon(Icons.payment),
                       title: Text('Pago Mensual'),
                       onTap: () {
                         Get.to(PaymentManagementScreen());
@@ -837,7 +942,96 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                       leading: Icon(Icons.calculate),
                       title: Text('Conteo'),
                       onTap: () {
-                        Get.to(ConteoNegociosScreen(negociosSeleccionados: [],));
+                        Get.to(ConteoNegociosScreen(
+                          negociosSeleccionados: [],
+                        ));
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24.0),
+                    child: ListTile(
+                      leading: Icon(Icons.calculate),
+                      title: Text('Tipo de Cambio'),
+                      onTap: () {
+                        // Cuando se toca el ListTile, muestra el BottomSheet directamente
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled:
+                              true, // Permite ajustar el tamaño del bottomsheet
+                          builder: (BuildContext context) {
+                            return Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Cambiar Tipo de Cambio',
+                                    style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Valor actual: \$${conversionRate.toStringAsFixed(2)}',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                  SizedBox(height: 16),
+                                  TextField(
+                                    controller: _nuevoValorController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Nuevo tipo de cambio',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    keyboardType:
+                                        TextInputType.numberWithOptions(
+                                            decimal: true),
+                                  ),
+                                  SizedBox(height: 16),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : () async {
+                                              setState(() {
+                                                _isLoading = true;
+                                              });
+
+                                              await Future.delayed(
+                                                  Duration(milliseconds: 500));
+
+                                              final nuevoValor =
+                                                  double.tryParse(
+                                                      _nuevoValorController
+                                                          .text);
+                                              if (nuevoValor != null) {
+                                                conversionRate = nuevoValor;
+                                              }
+
+                                              setState(() {
+                                                _isLoading = false;
+                                              });
+
+                                              Navigator.pop(
+                                                  context); // Cierra el bottom sheet
+                                            },
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green),
+                                      child: _isLoading
+                                          ? CircularProgressIndicator(
+                                              color: Colors.white)
+                                          : Text('Cambiar',
+                                              style: TextStyle(
+                                                  color: Colors.white)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
                       },
                     ),
                   ),
@@ -901,28 +1095,27 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                       labelText: 'Código',
                       border: OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(Icons.camera_alt),
-                        onPressed: () async {
-  // Abre la cámara para escanear el código de barras y pasa el nombre de la pantalla actual
-  final result = await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => BarcodeScannerPage(previousRoute: 'ventas'), // Cambia según la pantalla
-    ),
-  );
+                          icon: Icon(Icons.camera_alt),
+                          onPressed: () async {
+                            // Abre la cámara para escanear el código de barras y pasa el nombre de la pantalla actual
+                            print('Antes de Navigator.push (Punto de Venta)');
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      BarcodeScannerPointSalePage()),
+                            );
 
-  if (result != null && result['barcode'] != null) {
-    String scannedBarcode = result['barcode'];
+                            if (result != null && result['barcode'] != null) {
+                              String scannedBarcode = result['barcode'];
 
-    // Asigna el código escaneado al campo de texto
-    _codeController.text = scannedBarcode;
-    
-    // Llama a la función para buscar el producto por el código
-    _searchProductByCode(scannedBarcode);
-  }
-}
+                              // Asigna el código escaneado al campo de texto
+                              _codeController.text = scannedBarcode;
 
-                      ),
+                              // Llama a la función para buscar el producto por el código
+                              _searchProductByCode(scannedBarcode);
+                            }
+                          }),
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: <TextInputFormatter>[

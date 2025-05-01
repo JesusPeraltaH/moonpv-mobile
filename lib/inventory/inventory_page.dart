@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:moonpv/inventory/Ajustes_screen.dart';
 import 'package:moonpv/inventory/main_drawer.dart';
 import 'package:moonpv/inventory/sales.dart';
@@ -14,7 +16,6 @@ import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:moonpv/screens/payment_management_screen.dart';
-import 'package:moonpv/services/barcode_scanner_page.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -49,6 +50,9 @@ class _InventoryPageState extends State<InventoryPage> {
   String? selectedCategoryId;
   bool _isSaving = false;
   bool _isSavingBusiness = false;
+  Map<String, bool> _isCategorySwipeEnabled = {};
+  TextEditingController codigoController = TextEditingController();
+
   // Controladores para los productos
   List<Map<String, dynamic>> productControllers = [
     {
@@ -63,6 +67,25 @@ class _InventoryPageState extends State<InventoryPage> {
   // Lista para almacenar los productos antes de ser guardados
   //List<Map<String, dynamic>> productsList = [];
   int? editingIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    print('InventoryPage initState');
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    print('InventoryPage didChangeDependencies');
+  }
+
+  @override
+  void dispose() {
+    print('InventoryPage dispose');
+    codigoController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImageProducts(int productIndex,
       {bool isMainImage = true}) async {
@@ -330,9 +353,6 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
-// Método para seleccionar imágenes
-
-// Método para eliminar imágenes adicionales
   void _removeAdditionalImage(int productIndex, File imageToRemove) {
     setState(() {
       productControllers[productIndex]['storeImgs']
@@ -1098,7 +1118,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   //Index].
-  void _editProduct(int index) {
+  void _editProduct(int index) async {
     final product = productsList[index];
 
     productControllers.last['codigo']!.text = product['codigo'];
@@ -1106,16 +1126,52 @@ class _InventoryPageState extends State<InventoryPage> {
     productControllers.last['precio']!.text = product['precio'];
     productControllers.last['cantidad']!.text = product['cantidad'];
 
-    // Manejo seguro de la imagen
+    // Manejo seguro de la imagen principal
     if (product['imagen'] != null) {
       if (product['imagen'] is File) {
-        // Si ya es un File, lo asignamos directamente
         productControllers.last['imagen'] = product['imagen'];
       } else if (product['imagen'] is String) {
-        // Si es una URL, no podemos asignarla como File, pero podríamos descargarla si es necesario
-        print("La imagen es una URL: ${product['imagen']}");
-        // Aquí podrías convertir la URL en un File si lo requieres, pero eso depende de tu flujo de trabajo
+        print("La imagen principal es una URL: ${product['imagen']}");
+        // Si necesitas mostrar la imagen desde URL en la edición,
+        // podrías necesitar una forma de cargarla o mostrar un placeholder.
+        // Por ahora, no se asigna directamente como File.
+        productControllers.last['imagen'] =
+            null; // O podrías almacenar la URL temporalmente
       }
+    } else {
+      productControllers.last['imagen'] = null;
+    }
+
+    // Manejo de las imágenes adicionales (storeImgs)
+    // Manejo de storeImgs
+    if (product['storeImgs'] != null && product['storeImgs'] is List) {
+      List storeImgsList = product['storeImgs'];
+
+      List<File> storeImgFiles = [];
+
+      for (var item in storeImgsList) {
+        if (item is File) {
+          storeImgFiles.add(item);
+        } else if (item is String) {
+          // Descargar imagen desde la URL
+          try {
+            final response = await http.get(Uri.parse(item));
+            if (response.statusCode == 200) {
+              final tempDir = await getTemporaryDirectory();
+              final tempFile = File(
+                  '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg');
+              await tempFile.writeAsBytes(response.bodyBytes);
+              storeImgFiles.add(tempFile);
+            }
+          } catch (e) {
+            print('Error descargando imagen $item: $e');
+          }
+        }
+      }
+
+      productControllers.last['storeImgs'] = storeImgFiles;
+    } else {
+      productControllers.last['storeImgs'] = <File>[];
     }
 
     setState(() {
@@ -1202,6 +1258,7 @@ class _InventoryPageState extends State<InventoryPage> {
         'nombre': nombre,
         'fechaCreacion': FieldValue.serverTimestamp(),
         'creadoPor': FirebaseAuth.instance.currentUser?.uid ?? 'unknown',
+        'estatus': false,
       });
 
       if (mounted) {
@@ -1652,18 +1709,14 @@ class _InventoryPageState extends State<InventoryPage> {
                         labelText: 'Código',
                         suffixIcon: IconButton(
                           icon: Icon(Icons.camera_alt),
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => BarcodeScannerPage(
-                                    previousRoute: 'productos'),
-                              ),
-                            );
-                            if (result != null && result['barcode'] != null) {
-                              productController['codigo']?.text =
-                                  result['barcode'];
-                            }
+                          onPressed: () {
+                            _showBarcodeScannerBottomSheet(context,
+                                (String scannedCode) {
+                              print(
+                                  'Código escaneado en el BottomSheet: $scannedCode');
+                              productController['codigo']?.text = scannedCode;
+                              // No necesitas Get.back() aquí ya que el código se pasa directamente
+                            });
                           },
                         ),
                       ),
@@ -1796,6 +1849,74 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showBarcodeScannerBottomSheet(
+      BuildContext context, Function(String) onCodeScanned) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true, // Permite que el BottomSheet sea más alto
+      builder: (BuildContext bc) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            MobileScannerController cameraController =
+                MobileScannerController();
+
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  AppBar(
+                    title: Text('Escanear código de barras'),
+                    automaticallyImplyLeading:
+                        false, // No mostrar botón "atrás"
+                    actions: [
+                      IconButton(
+                        icon: Icon(Icons.flash_on),
+                        onPressed: () => cameraController.toggleTorch(),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close),
+                        onPressed: () =>
+                            Navigator.pop(context), // Cerrar el BottomSheet
+                      ),
+                    ],
+                  ),
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height *
+                        0.6, // Ajusta la altura según necesites
+                    width: double.infinity,
+                    child: Stack(
+                      children: [
+                        MobileScanner(
+                          controller: cameraController,
+                          onDetect: (capture) {
+                            final List<Barcode> barcodes = capture.barcodes;
+                            if (barcodes.isNotEmpty) {
+                              final String barcode =
+                                  barcodes.first.rawValue ?? "";
+                              onCodeScanned(barcode);
+                              Navigator.pop(
+                                  context); // Cerrar después de escanear
+                            }
+                          },
+                        ),
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter:
+                                BarcodeOverlayPainter(), // Usa tu overlay si lo tienes
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1944,6 +2065,94 @@ class _InventoryPageState extends State<InventoryPage> {
           );
   }
 
+  Widget _buildCategoryItem(DocumentSnapshot categoryDoc) {
+    final categoryName = categoryDoc['nombre'] as String;
+    final categoryId = categoryDoc.id;
+    final categoryData = categoryDoc.data() as Map<String, dynamic>;
+
+    // Asegurarte que _isCategorySwipeEnabled tenga el valor correcto
+    _isCategorySwipeEnabled.putIfAbsent(
+        categoryId, () => categoryData['estatus'] ?? false);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('- $categoryName'),
+          Switch(
+            value: _isCategorySwipeEnabled[categoryId] ?? false,
+            onChanged: (value) async {
+              setState(() {
+                _isCategorySwipeEnabled[categoryId] = value;
+              });
+
+              try {
+                await FirebaseFirestore.instance
+                    .collection('categories')
+                    .doc(categoryId)
+                    .update({'estatus': value});
+                print('Estatus de $categoryName actualizado a $value');
+              } catch (e) {
+                print('Error actualizando estatus de $categoryName: $e');
+                setState(() {
+                  _isCategorySwipeEnabled[categoryId] = !value;
+                });
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNegocioItem(DocumentSnapshot negocioDoc) {
+    final negocioName = negocioDoc['nombreEmpresa'] as String;
+    final negocioId = negocioDoc.id;
+    final negocioData = negocioDoc.data() as Map<String, dynamic>;
+
+    // Verificamos si tiene el campo 'activo'
+    if (negocioData['activo'] == null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('- $negocioName'),
+            // Si no tiene 'activo', no mostramos el Switch
+            Text('Sin estado'),
+          ],
+        ),
+      );
+    }
+
+    // Si tiene el campo 'activo', mostramos el Switch
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('- $negocioName'),
+          Switch(
+            value: negocioData['activo'] ?? false,
+            onChanged: (value) async {
+              try {
+                // Actualizamos el campo 'activo' en Firestore
+                await FirebaseFirestore.instance
+                    .collection('negocios')
+                    .doc(negocioId)
+                    .update({'activo': value});
+                print('Estatus de $negocioName actualizado a $value');
+              } catch (e) {
+                print('Error actualizando estatus de $negocioName: $e');
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showImageDialog(dynamic image) {
     showDialog(
       context: context,
@@ -1964,7 +2173,8 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildBusinessList() {
     bool isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
-    bool _isCategoriesExpanded =
+    bool _isCategoriesExpanded = false;
+    bool _isNegociosExpanded =
         false; // Estado para controlar la expansión de categorías
     Map<String, bool> _isCategorySwipeEnabled =
         {}; // Mapa para controlar el estado del swipe por categoría
@@ -2039,37 +2249,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         physics: NeverScrollableScrollPhysics(),
                         itemCount: categoriesDocs.length,
                         itemBuilder: (context, index) {
-                          final categoryDoc = categoriesDocs[index];
-                          final categoryName = categoryDoc['nombre'] as String;
-                          final categoryId = categoryDoc.id;
-
-                          // Inicializar el estado del swipe si no existe
-                          _isCategorySwipeEnabled.putIfAbsent(
-                              categoryId, () => false);
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16.0, vertical: 4.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('- $categoryName'),
-                                Switch(
-                                  value: _isCategorySwipeEnabled[categoryId] ??
-                                      false,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _isCategorySwipeEnabled[categoryId] =
-                                          value;
-                                      // TODO: Implementar la lógica para habilitar/deshabilitar el swipe para esta categoría
-                                      print(
-                                          'Swipe para $categoryName (${categoryId}): $value');
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
+                          return _buildCategoryItem(categoriesDocs[index]);
                         },
                       );
                     },
@@ -2077,6 +2257,52 @@ class _InventoryPageState extends State<InventoryPage> {
                   SizedBox(height: 8),
                 ],
               ),
+              ExpansionTile(
+                title: Text(
+                  'Negocios Activos',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                initiallyExpanded: _isNegociosExpanded,
+                onExpansionChanged: (expanded) {
+                  setState(() {
+                    _isNegociosExpanded = expanded;
+                  });
+                },
+                children: [
+                  SizedBox(height: 8),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('negocios')
+                        .snapshots(),
+                    builder: (context, negociosSnapshot) {
+                      if (negociosSnapshot.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text('Error al cargar negocios'),
+                        );
+                      }
+                      if (!negociosSnapshot.hasData) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final negociosDocs = negociosSnapshot.data!.docs;
+
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
+                        itemCount: negociosDocs.length,
+                        itemBuilder: (context, index) {
+                          return _buildNegocioItem(negociosDocs[index]);
+                        },
+                      );
+                    },
+                  ),
+                  SizedBox(height: 8),
+                ],
+              ),
+
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 5.0, vertical: 5.0),
@@ -2407,4 +2633,27 @@ class _InventoryPageState extends State<InventoryPage> {
       );
     }
   }
+}
+
+// Recuerda tener tu BarcodeOverlayPainter definido si lo estás usando.
+class BarcodeOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = Colors.white.withOpacity(0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+
+    final double guideWidth = size.width * 0.8;
+    final double guideHeight = 100;
+    final double left = (size.width - guideWidth) / 2;
+    final double top = (size.height * 0.6 - guideHeight) /
+        2; // Centrar en la vista de la cámara
+
+    final Rect guideRect = Rect.fromLTWH(left, top, guideWidth, guideHeight);
+    canvas.drawRect(guideRect, paint);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }

@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-class BarcodeScannerPage extends StatefulWidget {
-  final String previousRoute; // Ruta de la pantalla anterior
-
-  const BarcodeScannerPage({Key? key, required this.previousRoute}) : super(key: key);
+class BarcodeScannerPointSalePage extends StatefulWidget {
+  const BarcodeScannerPointSalePage({Key? key}) : super(key: key);
 
   @override
-  _BarcodeScannerPageState createState() => _BarcodeScannerPageState();
+  _BarcodeScannerPointSalePageState createState() =>
+      _BarcodeScannerPointSalePageState();
 }
 
-class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
+class _BarcodeScannerPointSalePageState
+    extends State<BarcodeScannerPointSalePage> {
   final MobileScannerController _cameraController = MobileScannerController();
 
   @override
@@ -21,17 +20,8 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     super.dispose();
   }
 
-   void _handleScanned(String scannedCode) {
-    switch (widget.previousRoute) {
-      case 'sales_new':
-        Get.back(result: {'barcode': scannedCode});
-        break;
-      case 'inventory':
-        Get.back(result: {'inventory_code': scannedCode});
-        break;
-      default:
-        Get.back(result: {'barcode': scannedCode});
-    }
+  void _handleScanned(String scannedCode) {
+    Get.back(result: {'barcode': scannedCode});
   }
 
   @override
@@ -55,7 +45,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             onDetect: (capture) {
               final List<Barcode> barcodes = capture.barcodes;
               if (barcodes.isNotEmpty) {
-                 final String barcode = barcodes.first.rawValue ?? "";
+                final String barcode = barcodes.first.rawValue ?? "";
                 _handleScanned(barcode);
               }
             },

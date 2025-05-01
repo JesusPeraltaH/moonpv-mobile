@@ -127,7 +127,9 @@ class _StoreScreenState extends State<StoreScreen> {
         builder: (context) => CustomScrollView(
           slivers: <Widget>[
             SliverAppBar(
-              backgroundColor: Colors.white,
+              backgroundColor: Theme.of(context).brightness == Brightness.dark
+                  ? Color(0xFF757575) // Color para el tema oscuro
+                  : Colors.white,
               expandedHeight: 230.0,
               floating: false,
               pinned: true,
@@ -215,11 +217,19 @@ class _StoreScreenState extends State<StoreScreen> {
                 return Center(child: CircularProgressIndicator());
               }
 
-              // Crear lista de categorías comenzando con "Todos"
-              final categories = ['Todos'];
               final categoryDocs = snapshot.data!.docs;
-              categories.addAll(
-                  categoryDocs.map((doc) => doc['nombre'] as String).toList());
+
+              // FILTRAR categorías donde 'estatus' == true
+              final activeCategories = categoryDocs
+                  .where((doc) =>
+                      (doc.data() as Map<String, dynamic>)['estatus'] == true)
+                  .toList();
+
+              // Crear lista de nombres de categorías
+              final categories = ['Todos'];
+              categories.addAll(activeCategories
+                  .map((doc) => doc['nombre'] as String)
+                  .toList());
 
               return ListView.builder(
                 scrollDirection: Axis.horizontal,
@@ -228,15 +238,14 @@ class _StoreScreenState extends State<StoreScreen> {
                   final categoryName = categories[index];
                   String? categoryId;
                   if (index > 0) {
-                    categoryId = categoryDocs[index - 1]
-                        .id; // Obtener el ID del documento
+                    categoryId = activeCategories[index - 1]
+                        .id; // ID de la categoría activa
                   }
 
                   return GestureDetector(
                     onTap: () {
                       setState(() {
-                        _selectedCategoryId =
-                            categoryId; // Actualizar _selectedCategoryId con el ID
+                        _selectedCategoryId = categoryId;
                         print(
                             'Categoría seleccionada: $categoryName, ID: $_selectedCategoryId');
                       });
@@ -428,142 +437,6 @@ class _StoreScreenState extends State<StoreScreen> {
       ),
     );
   }
-
-//  Widget _buildProductsSection() {
-//   return Column(
-//     crossAxisAlignment: CrossAxisAlignment.start,
-//     children: [
-//       Padding(
-//         padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 8),
-//         child: Text(
-//           'Catálogo ${_selectedCategory != 'Todos' ? '(${_selectedCategory})' : ''}',
-//           style: TextStyle(
-//             fontSize: 24,
-//             fontWeight: FontWeight.bold,
-//           ),
-//         ),
-//       ),
-//       StreamBuilder<QuerySnapshot>(
-//         stream: _getFilteredProducts(),
-//         builder: (context, snapshot) {
-//           if (snapshot.connectionState == ConnectionState.waiting) {
-//             return Center(child: CircularProgressIndicator());
-//           }
-
-//           if (snapshot.hasError) {
-//             return Center(child: Text('Error al cargar productos'));
-//           }
-
-//           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-//             return Center(
-//               child: Padding(
-//                 padding: EdgeInsets.all(16),
-//                 child: Text(
-//                   _selectedCategory == 'Todos'
-//                       ? 'No hay productos disponibles'
-//                       : 'No hay productos en esta categoría',
-//                   style: TextStyle(fontSize: 16),
-//                 ),
-//               ),
-//             );
-//           }
-
-//           // Filtrar los productos con cantidad mayor a 0
-//           final availableProducts = snapshot.data!.docs.where((product) {
-//             final productData = product.data() as Map<String, dynamic>;
-//             return (productData['cantidad'] ?? 0) > 0;
-//           }).toList();
-
-//           if (availableProducts.isEmpty) {
-//             return Center(
-//               child: Padding(
-//                 padding: EdgeInsets.all(16),
-//                 child: Text(
-//                   _selectedCategory == 'Todos'
-//                       ? 'No hay productos disponibles'
-//                       : 'No hay productos disponibles en esta categoría',
-//                   style: TextStyle(fontSize: 16),
-//                 ),
-//               ),
-//             );
-//           }
-
-//           return GridView.builder(
-//             shrinkWrap: true,
-//             physics: NeverScrollableScrollPhysics(),
-//             padding: EdgeInsets.all(16),
-//             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-//               crossAxisCount: 2,
-//               crossAxisSpacing: 16,
-//               mainAxisSpacing: 16,
-//               childAspectRatio: 0.68,
-//             ),
-//             itemCount: availableProducts.length, // Usar la lista filtrada
-//             itemBuilder: (context, index) {
-//               final product = availableProducts[index];
-//               final productData = product.data() as Map<String, dynamic>;
-//               final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
-//               final hasImages =
-//                   (productData['imageUrl']?.isNotEmpty == true) ||
-//                       storeImgs.isNotEmpty;
-
-//               return GestureDetector(
-//                 onTap: () => _showProductDetails(product),
-//                 child: Card(
-//                   elevation: 2,
-//                   child: Column(
-//                     crossAxisAlignment: CrossAxisAlignment.start,
-//                     children: [
-//                       Expanded(
-//                         child: Container(
-//                           decoration: BoxDecoration(
-//                             color: Theme.of(context).cardColor,
-//                           ),
-//                           child: hasImages
-//                               ? _buildProductImage(productData)
-//                               : _buildThemeAwarePlaceholder(context),
-//                         ),
-//                       ),
-//                       Padding(
-//                         padding: EdgeInsets.all(8),
-//                         child: Column(
-//                           crossAxisAlignment: CrossAxisAlignment.start,
-//                           children: [
-//                             Text(
-//                               productData['nombre'] ?? 'Sin nombre',
-//                               style: TextStyle(
-//                                   fontWeight: FontWeight.bold, fontSize: 16),
-//                               maxLines: 1,
-//                               overflow: TextOverflow.ellipsis,
-//                             ),
-//                             SizedBox(height: 4),
-//                             Text(
-//                               '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
-//                               style: TextStyle(color: Colors.green, fontSize: 15),
-//                             ),
-//                             SizedBox(height: 4),
-//                             Text(
-//                               'Disponibles: ${productData['cantidad'] ?? 0}',
-//                               style: TextStyle(
-//                                   color: productData['cantidad'] > 0
-//                                       ? Colors.black54
-//                                       : Colors.red,
-//                                   fontSize: 14),
-//                             ),
-//                           ],
-//                         ),
-//                       ),
-//                     ],
-//                   ),
-//                 ),
-//               );
-//             },
-//           );
-//         },
-//       ),
-//     ],
-//   );
-// }
 
   Future<void> _loadInitialProducts() async {
     try {
@@ -1242,7 +1115,7 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
       onTap: onSearchTap,
       child: Container(
         color: Colors.white, // Color de fondo del buscador
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.grey.shade200,

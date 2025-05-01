@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,239 +27,435 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false; // Estado de carga
   bool _obscurePassword = true; // Control de visibilidad de la contraseña
-  
-void _showCreateAccountBottomSheet(BuildContext context) {
+
+  void _showCreateAccountBottomSheet(BuildContext context) {
     Get.bottomSheet(
       CreateAccountBottomSheet(),
-      isScrollControlled: true, 
+      isScrollControlled: true,
       backgroundColor: Colors.white, // <- Muy importante para opacidad
-  shape: RoundedRectangleBorder(
-    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-  ),// Permite que el bottom sheet sea más alto
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ), // Permite que el bottom sheet sea más alto
     );
   }
-  
-  @override
-Widget build(BuildContext context) {
-  final iconColor = Theme.of(context).brightness == Brightness.dark 
-      ? Colors.white 
-      : Colors.black;
-  final isDark = Theme.of(context).brightness == Brightness.dark;
 
-  return Scaffold(
-    body: Stack(
-      children: [
-        // Contenido principal centrado
-        Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Contenido principal centrado
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    isDark
+                        ? 'assets/images/moon_blanco.png'
+                        : 'assets/images/moon_negro.png',
+                    height: 200,
+                  ),
+                  const SizedBox(height: 32),
+                  TextField(
+                    controller: _emailController,
+                    decoration: InputDecoration(
+                      labelText: "Correo",
+                      prefixIcon: Icon(Icons.email, color: iconColor),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _passwordController,
+                    decoration: InputDecoration(
+                      labelText: "Contraseña",
+                      prefixIcon: Icon(Icons.lock, color: iconColor),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                          color: iconColor,
+                        ),
+                        onPressed: () {
+                          setState(() => _obscurePassword = !_obscurePassword);
+                        },
+                      ),
+                    ),
+                    obscureText: _obscurePassword,
+                    style: TextStyle(color: iconColor),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => _showCreateAccountBottomSheet(context),
+                        child: Text(
+                          "Olvidé mi contraseña",
+                          style:
+                              TextStyle(color: Theme.of(context).primaryColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              setState(() => _isLoading = true);
+                              await _login(context);
+                              setState(() => _isLoading = false);
+                            },
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text("Iniciar Sesión"),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      // onPressed: _isLoading ? null : () async {
+                      //   setState(() => _isLoading = true);
+                      //   await _loginWithGoogle();
+                      //   setState(() => _isLoading = false);
+                      // },
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              try {
+                                setState(() => _isLoading = true);
+
+                                await _loginWithGoogle();
+
+                                // El éxito se maneja dentro de _loginWithGoogle con Get.off()
+                                // No necesitamos más lógica aquí
+                              } on FirebaseAuthException catch (e) {
+                                setState(() => _isLoading = false);
+
+                                // Mostrar error específico (ya traducido desde auth_service)
+                                Get.snackbar(
+                                  'Error',
+                                  e.message ?? 'Error al iniciar sesión',
+                                  snackPosition: SnackPosition.TOP,
+                                  backgroundColor: Colors.red[600],
+                                  colorText: Colors.white,
+                                  duration: Duration(seconds: 4),
+                                );
+                              } catch (e) {
+                                setState(() => _isLoading = false);
+
+                                // Error genérico
+                                Get.snackbar(
+                                  'Error',
+                                  'Ocurrió un error inesperado',
+                                  snackPosition: SnackPosition.TOP,
+                                  backgroundColor: Colors.red[600],
+                                  colorText: Colors.white,
+                                  duration: Duration(seconds: 4),
+                                );
+
+                                // Registrar error completo en consola
+                                debugPrint('Error en login Google: $e');
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero),
+                      ),
+                      child: _isLoading
+                          ? const CircularProgressIndicator()
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset(
+                                  AppImages.google,
+                                  height: 24,
+                                ),
+                                const SizedBox(width: 10),
+                                const Text("Iniciar sesión con Google"),
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Sección "Aún no tienes cuenta" fija en la parte inferior
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset(
-                  isDark ? 'assets/images/moon_blanco.png' : 'assets/images/moon_negro.png',
-                  height: 200,
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    labelText: "Correo",
-                    prefixIcon: Icon(Icons.email, color: iconColor),
-                 
-                ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _passwordController,
-                  decoration: InputDecoration(
-                    labelText: "Contraseña",
-                    prefixIcon: Icon(Icons.lock, color: iconColor),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                        color: iconColor,
-                      ),
-                      onPressed: () {
-                        setState(() => _obscurePassword = !_obscurePassword);
-                      },
-                    ),
-                  ),
-                  obscureText: _obscurePassword,
-                  style: TextStyle(color: iconColor),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => _showCreateAccountBottomSheet(context),
-                      child: Text(
-                        "Olvidé mi contraseña",
-                        style: TextStyle(color: Theme.of(context).primaryColor),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : () async {
-                      setState(() => _isLoading = true);
-                      await _login(context);
-                      setState(() => _isLoading = false);
-                    },
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text("Iniciar Sesión"),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : () async {
-                      setState(() => _isLoading = true);
-                      await _loginWithGoogle();
-                      setState(() => _isLoading = false);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                    ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator()
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Image.asset(
-                                AppImages.google,
-                                height: 24,
-                              ),
-                              const SizedBox(width: 10),
-                              const Text("Iniciar sesión con Google"),
-                            ],
-                          ),
+                const Text("¿Aún no tienes cuenta?"),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => _showCreateAccountBottomSheet(context),
+                  child: Text(
+                    "Crear cuenta",
+                    style: TextStyle(color: Theme.of(context).primaryColor),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-
-        // Sección "Aún no tienes cuenta" fija en la parte inferior
-        Positioned(
-          bottom: 20,
-          left: 0,
-          right: 0,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text("¿Aún no tienes cuenta?"),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () => _showCreateAccountBottomSheet(context),
-                child: Text(
-                  "Crear cuenta",
-                  style: TextStyle(color: Theme.of(context).primaryColor),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
-  
-
- Future<void> _login(BuildContext context) async {
-  final String email = _emailController.text.trim();
-  final String password = _passwordController.text.trim();
-
-  if (email.isEmpty || password.isEmpty) {
-    _showSnackbar("Error", "Por favor, ingresa tu correo y contraseña", Colors.red);
-    return;
+        ],
+      ),
+    );
   }
 
-  try {
-    final UserCredential userCredential =
-        await _auth.signInWithEmailAndPassword(email: email, password: password);
+  Future<void> _login(BuildContext context) async {
+    final String email = _emailController.text.trim();
+    final String password = _passwordController.text.trim();
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userId', userCredential.user!.uid);
+    if (email.isEmpty || password.isEmpty) {
+      _showSnackbar(
+          "Error", "Por favor, ingresa tu correo y contraseña", Colors.red);
+      return;
+    }
 
-    final DocumentSnapshot userDoc =
-        await _firestore.collection('users').doc(userCredential.user?.uid).get();
+    try {
+      final UserCredential userCredential = await _auth
+          .signInWithEmailAndPassword(email: email, password: password);
 
-    _showSnackbar("Bienvenido", "Inicio de sesión exitoso", Colors.green);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userId', userCredential.user!.uid);
 
-    await Future.delayed(Duration(seconds: 2));
+      final DocumentSnapshot userDoc = await _firestore
+          .collection('users')
+          .doc(userCredential.user?.uid)
+          .get();
 
-    if (userDoc.exists) {
-      final String role = userDoc['role'];
-      await prefs.setString('userRole', role);
+      _showSnackbar("Bienvenido", "Inicio de sesión exitoso", Colors.green);
 
-      if (role == "Admin") {
-        Get.off(() => SalespointNewSalePage());
-      } else if (role == "Dueño de Negocio") {
-        Get.off(() => BusinessOwnerScreen());
-      } else if (role == "Empleado") {
-        Get.off(() => SalespointNewSalePage());
+      await Future.delayed(Duration(seconds: 2));
+
+      if (userDoc.exists) {
+        final String role = userDoc['role'];
+        await prefs.setString('userRole', role);
+
+        if (role == "Admin") {
+          Get.off(() => SalespointNewSalePage());
+        } else if (role == "Dueño de Negocio") {
+          Get.off(() => BusinessOwnerScreen());
+        } else if (role == "Empleado") {
+          Get.off(() => SalespointNewSalePage());
+        } else {
+          Get.off(() => StoreScreen());
+        }
       } else {
         Get.off(() => StoreScreen());
       }
-    } else {
-      Get.off(() => StoreScreen());
-    }
-  } on FirebaseAuthException catch (e) {
-    String errorMessage = "Ocurrió un error al iniciar sesión.";
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = "Ocurrió un error al iniciar sesión.";
 
-    if (e.code == 'user-not-found') {
-      errorMessage = "No existe una cuenta con ese correo.";
-    } else if (e.code == 'wrong-password') {
-      errorMessage = "La contraseña es incorrecta.";
-    } else if (e.code == 'invalid-email') {
-      errorMessage = "El correo ingresado no es válido.";
-    }
+      if (e.code == 'user-not-found') {
+        errorMessage = "No existe una cuenta con ese correo.";
+      } else if (e.code == 'wrong-password') {
+        errorMessage = "La contraseña es incorrecta.";
+      } else if (e.code == 'invalid-email') {
+        errorMessage = "El correo ingresado no es válido.";
+      }
 
-    _showSnackbar("Error", errorMessage, Colors.red);
-    await _logout();
-  } catch (e) {
-    _showSnackbar("Error", "Error inesperado al iniciar sesión.", Colors.red);
-    await _logout();
+      _showSnackbar("Error", errorMessage, Colors.red);
+      await _logout();
+    } catch (e) {
+      _showSnackbar("Error", "Error inesperado al iniciar sesión.", Colors.red);
+      await _logout();
+    }
   }
-}
 
-void _showSnackbar(String title, String message, Color color) {
-  Get.snackbar(
-    title,
-    message,
-    snackPosition: SnackPosition.TOP,
-    backgroundColor: color,
-    colorText: Colors.white,
-    margin: EdgeInsets.all(10),
-  );
-}
+  void _showSnackbar(String title, String message, Color color) {
+    Get.snackbar(
+      title,
+      message,
+      snackPosition: SnackPosition.TOP,
+      backgroundColor: color,
+      colorText: Colors.white,
+      margin: EdgeInsets.all(10),
+    );
+  }
 
+  // Future<void> _loginWithGoogle() async {
+  //   try {
+  //     final credenciales = await AuthService().signInWithGoogle();
+  //     debugPrint(credenciales.user?.displayName);
+  //     debugPrint(credenciales.user?.photoURL);
+  //     debugPrint(credenciales.user?.email);
 
+  //     await Future.delayed(Duration(seconds: 2)); // Simulación de carga visible
+  //     Get.off(() => StoreScreen());
+  //   } catch (e) {
+  //     Get.snackbar("Error", "No se pudo iniciar sesión con Google: $e",
+  //         snackPosition: SnackPosition.BOTTOM);
+  //     await _logout();
+  //   }
+  // }
   Future<void> _loginWithGoogle() async {
     try {
-      final credenciales = await AuthService().signInWithGoogle();
-      debugPrint(credenciales.user?.displayName);
-      debugPrint(credenciales.user?.photoURL);
-      debugPrint(credenciales.user?.email);
+      setState(() => _isLoading = true);
 
-      await Future.delayed(Duration(seconds: 2)); // Simulación de carga visible
-      Get.off(() => StoreScreen());
+      // 1. Verificar conexión a internet primero
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        if (result.isEmpty || result[0].rawAddress.isEmpty) {
+          throw SocketException('No internet');
+        }
+      } on SocketException catch (_) {
+        throw FirebaseAuthException(
+          code: 'no-internet',
+          message: 'Sin conexión a internet. Revisa tus datos móviles o WiFi',
+        );
+      }
+
+      // 2. Intentar autenticación (con reintento)
+      UserCredential? userCredential;
+      int attempts = 0;
+      const maxAttempts = 2;
+
+      while (attempts < maxAttempts) {
+        try {
+          userCredential = await AuthService().signInWithGoogle().timeout(
+                const Duration(seconds: 30),
+                onTimeout: () =>
+                    throw TimeoutException('Tiempo de espera agotado'),
+              );
+          break;
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'network-error' && attempts < maxAttempts - 1) {
+            await Future.delayed(const Duration(seconds: 1));
+            attempts++;
+            continue;
+          }
+          rethrow;
+        }
+      }
+
+      if (userCredential == null) {
+        throw FirebaseAuthException(
+          code: 'auth-failed',
+          message: 'No se pudo completar la autenticación',
+        );
+      }
+
+      // 3. Guardar datos locales
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userId', userCredential.user!.uid);
+      await prefs.setString('loginMethod', 'google');
+
+      // 4. Manejar usuario nuevo/existente
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(userCredential.user?.uid)
+          .get();
+
+      final String role = userDoc.exists
+          ? userDoc['role'] ?? 'Usuario Normal'
+          : 'Usuario Normal';
+      await prefs.setString('userRole', role);
+
+      if (!userDoc.exists) {
+        await _firestore.collection('users').doc(userCredential.user?.uid).set({
+          'email': userCredential.user?.email,
+          'name': userCredential.user?.displayName,
+          'photoUrl': userCredential.user?.photoURL,
+          'role': role,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // 5. Redirigir según rol
+      _redirectBasedOnRole(role);
+    } on FirebaseAuthException catch (e) {
+      setState(() => _isLoading = false);
+
+      final String errorMessage = _getFriendlyErrorMessage(e.code);
+
+      Get.snackbar(
+        'Error',
+        errorMessage,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red[600],
+        colorText: Colors.white,
+        duration: const Duration(seconds: 4),
+        mainButton: TextButton(
+          onPressed: () => _loginWithGoogle(),
+          child:
+              const Text('Reintentar', style: TextStyle(color: Colors.white)),
+        ),
+      );
+    } on TimeoutException catch (_) {
+      setState(() => _isLoading = false);
+      Get.snackbar(
+        'Error',
+        'El servicio está tardando demasiado. Revisa tu conexión',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.orange[600],
+        colorText: Colors.white,
+      );
     } catch (e) {
-      Get.snackbar("Error", "No se pudo iniciar sesión con Google: $e",
-          snackPosition: SnackPosition.BOTTOM);
-      await _logout();
+      setState(() => _isLoading = false);
+      debugPrint('Error completo: $e');
+      Get.snackbar(
+        'Error',
+        'Ocurrió un problema inesperado. Intenta nuevamente',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red[600],
+        colorText: Colors.white,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _getFriendlyErrorMessage(String errorCode) {
+    switch (errorCode) {
+      case 'no-internet':
+        return 'No hay conexión a internet. Revisa tus datos móviles o WiFi';
+      case 'network-error':
+        return 'Problema de red. Tu operador móvil podría estar bloqueando la conexión';
+      case 'user-cancelled':
+        return '';
+      case 'account-exists-with-different-credential':
+        return 'Esta cuenta ya está registrada con otro método';
+      case 'invalid-credential':
+        return 'Credenciales inválidas. Intenta nuevamente';
+      default:
+        return 'Error al iniciar sesión con Google';
+    }
+  }
+
+  void _redirectBasedOnRole(String role) {
+    switch (role) {
+      case "Admin":
+        Get.offAll(() => SalespointNewSalePage());
+        break;
+      case "Dueño de Negocio":
+        Get.offAll(() => BusinessOwnerScreen());
+        break;
+      default:
+        Get.offAll(() => StoreScreen());
     }
   }
 

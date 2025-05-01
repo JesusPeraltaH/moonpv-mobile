@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "904853707508-o8e38lefjqq59mnvhngc48aph8abesrl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.moonpv",
+            "certificate_hash": "825dcf8a0d1b72107ffefdd4059629ec6ce5b5a3"
+          }
+        },
+        {
           "client_id": "904853707508-vl040a032hs2se64jr754prrttef6duc.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -47,10 +55,10 @@
               "client_type": 3
             },
             {
-              "client_id": "904853707508-n6vi8mhcf0p7hb5go3fatn8r1gt8ljso.apps.googleusercontent.com",
+              "client_id": "904853707508-rsmbt368keakgllp8qsascmpocmgg0v9.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.example.moonpos"
+                "bundle_id": "com.example.moonpv"
               }
             }
           ]
