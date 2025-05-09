@@ -1,0 +1,1 @@
+/Users/jesusperalta/Documents/Programar/moonpv-mobile/build/app/intermediates/cxx/RelWithDebInfo/3c5l4s67/obj/arm64-v8a

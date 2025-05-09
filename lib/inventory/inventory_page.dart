@@ -514,93 +514,251 @@ class _InventoryPageState extends State<InventoryPage> {
   }
   // Agregar productos a Firestore
 
-  void _showProductsDialog(List<Map<String, dynamic>> products) {
-    bool isPortrait =
-        MediaQuery.of(context).orientation == Orientation.portrait;
+  void _showProductsDialog(
+      List<Map<String, dynamic>> products, Map<String, dynamic> business) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header con título y botón de editar negocio
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Productos del Negocio',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.edit, color: Colors.blue),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showEditBusinessDialog(business);
+                  },
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            // Lista de productos
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: products.length,
+                itemBuilder: (context, index) {
+                  final product = products[index];
+                  return ListTile(
+                    title: Text(product['nombre'] ?? 'Sin nombre'),
+                    subtitle:
+                        Text('Código: ${product['codigo'] ?? 'Sin código'}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showEditProductBottomSheet(product, index);
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _deleteProduct(index);
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(height: 16),
+            // Botón de cerrar
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cerrar'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditBusinessDialog(Map<String, dynamic> business) {
+    final TextEditingController nameController =
+        TextEditingController(text: business['nombreEmpresa']);
+    final TextEditingController ownerController =
+        TextEditingController(text: business['nombreDueno']);
+    final TextEditingController phoneController =
+        TextEditingController(text: business['telefono']);
+    File? _image;
+    bool _isLoading = false;
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Productos del Negocio'),
-          content: SingleChildScrollView(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => Dialog(
+          child: Container(
+            width: double.maxFinite,
+            padding: EdgeInsets.all(16),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (isPortrait)
-                  ...products.map((product) {
-                    return ListTile(
-                      title: Text(product['nombre']),
-                      subtitle: Text('Código: ${product['codigo']}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.edit),
-                            onPressed: () {
-                              _showEditProductBottomSheet(product);
-                            },
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.delete),
-                            onPressed: () {
-                              _deleteProductBusiness(product['id']);
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                if (!isPortrait)
-                  DataTable(
-                    columns: [
-                      DataColumn(label: Text('Código')),
-                      DataColumn(label: Text('Nombre')),
-                      DataColumn(label: Text('Precio')),
-                      DataColumn(label: Text('Cantidad')),
-                      DataColumn(label: Text('Acciones')),
-                    ],
-                    rows: products.map((product) {
-                      return DataRow(
-                        cells: [
-                          DataCell(Text(product['codigo'])),
-                          DataCell(Text(product['nombre'])),
-                          DataCell(Text(product['precio'].toString())),
-                          DataCell(Text(product['cantidad'].toString())),
-                          DataCell(
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.edit),
-                                  onPressed: () {
-                                    _showEditProductBottomSheet(product);
-                                  },
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.delete),
-                                  onPressed: () {
-                                    _deleteProduct(product['id']);
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
+                Text(
+                  'Editar Negocio',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
+                SizedBox(height: 16),
+                // Imagen del negocio
+                Center(
+                  child: GestureDetector(
+                    onTap: () async {
+                      final ImagePicker picker = ImagePicker();
+                      final XFile? image =
+                          await picker.pickImage(source: ImageSource.gallery);
+                      if (image != null) {
+                        setState(() {
+                          _image = File(image.path);
+                        });
+                      }
+                    },
+                    child: Container(
+                      height: 150,
+                      width: 150,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: _image != null
+                          ? Image.file(_image!, fit: BoxFit.cover)
+                          : business['logo'] != null &&
+                                  business['logo'].isNotEmpty
+                              ? Image.network(
+                                  business['logo'],
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Icon(Icons.business, size: 50);
+                                  },
+                                )
+                              : Icon(Icons.business, size: 50),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
+                // Campos de texto
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Nombre del Negocio',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 8),
+                TextField(
+                  controller: ownerController,
+                  decoration: InputDecoration(
+                    labelText: 'Nombre del Dueño',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 8),
+                TextField(
+                  controller: phoneController,
+                  decoration: InputDecoration(
+                    labelText: 'Teléfono',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+                SizedBox(height: 16),
+                // Botones
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Cancelar'),
+                    ),
+                    SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              setState(() {
+                                _isLoading = true;
+                              });
+                              try {
+                                String? logoUrl = business['logo'];
+                                if (_image != null) {
+                                  logoUrl =
+                                      await _uploadImageToFirebase(_image!);
+                                }
+
+                                await FirebaseFirestore.instance
+                                    .collection('negocios')
+                                    .doc(business['id'])
+                                    .update({
+                                  'nombreEmpresa': nameController.text,
+                                  'nombreDueno': ownerController.text,
+                                  'telefono': phoneController.text,
+                                  if (logoUrl != null) 'logo': logoUrl,
+                                });
+
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Negocio actualizado correctamente')),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Error al actualizar el negocio: $e')),
+                                );
+                              } finally {
+                                setState(() {
+                                  _isLoading = false;
+                                });
+                              }
+                            },
+                      child: _isLoading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text('Guardar'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cerrar'),
-            ),
-          ],
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -757,320 +915,331 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  void _showEditProductBottomSheet(Map<String, dynamic> product) {
-    final TextEditingController _codigoController =
-        TextEditingController(text: product['codigo']);
-    final TextEditingController _nombreController =
+  void _showEditProductBottomSheet(Map<String, dynamic> product, int index) {
+    final TextEditingController codigoController =
+        TextEditingController(text: product['codigo']?.toString());
+    final TextEditingController nombreController =
         TextEditingController(text: product['nombre']);
-    final TextEditingController _precioController =
-        TextEditingController(text: product['precio'].toString());
-    final TextEditingController _cantidadController =
-        TextEditingController(text: product['cantidad'].toString());
-
-    // Estado para las imágenes
-    List<File> _newAdditionalImages = [];
-    List<String> _existingImageUrls = List.from(product['storeImgs'] ?? []);
-    File? _newMainImage;
-    bool _isSaving = false;
+    final TextEditingController precioController =
+        TextEditingController(text: product['precio']?.toString());
+    final TextEditingController cantidadController =
+        TextEditingController(text: product['cantidad']?.toString());
+    File? _image;
+    List<File> _storeImages = [];
+    bool _isLoading = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            print('Imágenes existentes al abrir el modal: $_existingImageUrls');
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: SingleChildScrollView(
-                child: Container(
-                  padding: EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Editar Producto',
-                              style: TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.bold)),
-                          IconButton(
-                            icon: Icon(Icons.close),
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                            },
-                          ),
-                        ],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => Container(
+          padding: EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Editar Producto',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 16),
+                // Imagen principal del producto
+                Center(
+                  child: GestureDetector(
+                    onTap: () async {
+                      final ImagePicker picker = ImagePicker();
+                      final XFile? image =
+                          await picker.pickImage(source: ImageSource.gallery);
+                      if (image != null) {
+                        setState(() {
+                          _image = File(image.path);
+                        });
+                      }
+                    },
+                    child: Container(
+                      height: 150,
+                      width: 150,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      SizedBox(height: 16),
-
-                      // Imagen principal
-                      Text(
-                          'Imagen Principal de Inventario (no es visible en MoonStore)',
-                          style: TextStyle(fontSize: 16)),
+                      child: _image != null
+                          ? Image.file(_image!, fit: BoxFit.cover)
+                          : product['imagen'] != null &&
+                                  product['imagen'].isNotEmpty
+                              ? Image.network(
+                                  product['imagen'],
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Icon(Icons.image, size: 50);
+                                  },
+                                )
+                              : Icon(Icons.image, size: 50),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
+                // Sección de imágenes de la tienda
+                Text(
+                  'Imágenes de la Tienda',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Container(
+                  height: 100,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      // Mostrar imágenes existentes
+                      if (product['storeImgs'] != null)
+                        ...(product['storeImgs'] as List<dynamic>)
+                            .map((imgUrl) => Padding(
+                                  padding: const EdgeInsets.only(right: 8.0),
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        width: 100,
+                                        height: 100,
+                                        decoration: BoxDecoration(
+                                          border:
+                                              Border.all(color: Colors.grey),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          child: Image.network(
+                                            imgUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                              return Icon(Icons.image,
+                                                  size: 30);
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        top: 0,
+                                        right: 0,
+                                        child: IconButton(
+                                          icon: Icon(Icons.close,
+                                              color: Colors.red),
+                                          onPressed: () {
+                                            setState(() {
+                                              (product['storeImgs']
+                                                      as List<dynamic>)
+                                                  .remove(imgUrl);
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                      // Mostrar imágenes nuevas seleccionadas
+                      ..._storeImages.map((file) => Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(file, fit: BoxFit.cover),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: IconButton(
+                                    icon: Icon(Icons.close, color: Colors.red),
+                                    onPressed: () {
+                                      setState(() {
+                                        _storeImages.remove(file);
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
+                      // Botón para agregar nuevas imágenes
                       GestureDetector(
                         onTap: () async {
-                          final image = await _pickSingleImage();
-                          if (image != null) {
-                            setState(() => _newMainImage = image);
+                          final ImagePicker picker = ImagePicker();
+                          final List<XFile> images =
+                              await picker.pickMultiImage();
+                          if (images.isNotEmpty) {
+                            setState(() {
+                              _storeImages
+                                  .addAll(images.map((img) => File(img.path)));
+                            });
                           }
                         },
                         child: Container(
-                          height: 150,
-                          width: 150,
+                          width: 100,
+                          height: 100,
                           decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
                             borderRadius: BorderRadius.circular(8),
-                            color: Colors.grey[200],
                           ),
-                          child: _newMainImage != null
-                              ? Image.file(_newMainImage!, fit: BoxFit.cover)
-                              : product['imagen'] != null
-                                  ? Image.network(product['imagen'],
-                                      fit: BoxFit.cover)
-                                  : Icon(Icons.add_a_photo, size: 40),
-                        ),
-                      ),
-
-                      SizedBox(height: 16),
-
-                      // Imágenes adicionales
-                      Text('Imágenes Para la MoonStore',
-                          style: TextStyle(fontSize: 16)),
-                      SizedBox(height: 8),
-
-                      // Imágenes existentes
-                      if (_existingImageUrls.isNotEmpty) ...[
-                        Text('Existentes:', style: TextStyle(fontSize: 14)),
-                        SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          children: _existingImageUrls.map((url) {
-                            return Stack(
-                              children: [
-                                Container(
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: DecorationImage(
-                                      image: NetworkImage(url),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  right: 0,
-                                  child: IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () {
-                                      setState(() {
-                                        _existingImageUrls.remove(url);
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                        SizedBox(height: 16),
-                      ],
-
-                      // Nuevas imágenes
-                      Text('Agregar más imágenes:',
-                          style: TextStyle(fontSize: 14)),
-                      SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          ..._newAdditionalImages.map((image) {
-                            return Stack(
-                              children: [
-                                Container(
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: DecorationImage(
-                                      image: FileImage(image),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  right: 0,
-                                  child: IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () {
-                                      setState(() {
-                                        _newAdditionalImages.remove(image);
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
-                            );
-                          }).toList(),
-                          IconButton(
-                            icon: Icon(Icons.add_a_photo),
-                            onPressed: () async {
-                              final images =
-                                  await _pickMultipleImages(); // Usar la función de selección múltiple
-                              if (images != null && images.isNotEmpty) {
-                                setState(() {
-                                  _newAdditionalImages.addAll(images);
-                                });
-                              }
-                            },
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_a_photo, size: 30),
+                              SizedBox(height: 4),
+                              Text('Agregar', style: TextStyle(fontSize: 12)),
+                            ],
                           ),
-                        ],
-                      ),
-
-                      SizedBox(height: 14),
-
-                      // Campos de texto
-                      TextField(
-                        controller: _codigoController,
-                        decoration: InputDecoration(labelText: 'Código'),
-                      ),
-                      SizedBox(height: 14),
-
-                      TextField(
-                        controller: _nombreController,
-                        decoration: InputDecoration(labelText: 'Nombre'),
-                      ),
-                      SizedBox(height: 14),
-
-                      TextField(
-                        controller: _precioController,
-                        decoration: InputDecoration(labelText: 'Precio'),
-                        keyboardType:
-                            TextInputType.numberWithOptions(decimal: true),
-                      ),
-                      SizedBox(height: 14),
-
-                      TextField(
-                        controller: _cantidadController,
-                        decoration: InputDecoration(labelText: 'Cantidad'),
-                        keyboardType: TextInputType.number,
-                      ),
-
-                      SizedBox(height: 14),
-
-                      // Botón de guardar
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isSaving
-                              ? null
-                              : () async {
-                                  setState(() => _isSaving = true);
-                                  try {
-                                    // Subir nueva imagen principal si se seleccionó
-                                    String? mainImageUrl = product['imagen'];
-                                    if (_newMainImage != null) {
-                                      mainImageUrl = await _uploadImage(
-                                        _newMainImage!,
-                                        'products/${product['negocioId']}/${product['codigo']}_main_${DateTime.now().millisecondsSinceEpoch}',
-                                      );
-                                    }
-
-                                    // Subir nuevas imágenes adicionales
-                                    List<String> newImageUrls = [];
-                                    for (var image in _newAdditionalImages) {
-                                      final url = await _uploadImage(
-                                        image,
-                                        'products/${product['negocioId']}/${product['codigo']}_additional_${DateTime.now().millisecondsSinceEpoch}',
-                                      );
-                                      newImageUrls.add(url);
-                                    }
-
-                                    // Generar keywords actualizadas
-                                    final searchKeywords =
-                                        _generateProductKeywords(
-                                            _nombreController.text);
-
-                                    // Actualizar producto
-                                    await FirebaseFirestore.instance
-                                        .collection('productos')
-                                        .doc(product['id'])
-                                        .update({
-                                      'codigo': _codigoController.text,
-                                      'nombre': _nombreController.text,
-                                      'precio':
-                                          double.parse(_precioController.text),
-                                      'cantidad':
-                                          int.parse(_cantidadController.text),
-                                      'imagen': mainImageUrl,
-                                      'storeImgs': [
-                                        ..._existingImageUrls,
-                                        ...newImageUrls
-                                      ],
-                                      'searchKeywords': searchKeywords,
-                                      'ultimaActualizacion':
-                                          FieldValue.serverTimestamp(),
-                                    });
-
-                                    if (mounted) {
-                                      Navigator.of(context).pop();
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                            content: Text(
-                                                'Producto actualizado correctamente')),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                            content: Text(
-                                                'Error al actualizar: $e')),
-                                      );
-                                    }
-                                  } finally {
-                                    if (mounted) {
-                                      setState(() => _isSaving = false);
-                                    }
-                                  }
-                                },
-                          child: _isSaving
-                              ? Row(
-                                  // Centra el CircularProgressIndicator y el texto
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                                Colors.white),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                        width:
-                                            8), // Espacio entre el indicador y el texto
-                                    Text('Guardando...'),
-                                  ],
-                                )
-                              : Text('Guardar Cambios'),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
+                SizedBox(height: 16),
+                // Resto de campos
+                TextField(
+                  controller: codigoController,
+                  decoration: InputDecoration(
+                    labelText: 'Código',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 8),
+                TextField(
+                  controller: nombreController,
+                  decoration: InputDecoration(
+                    labelText: 'Nombre',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: 8),
+                TextField(
+                  controller: precioController,
+                  decoration: InputDecoration(
+                    labelText: 'Precio',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                SizedBox(height: 8),
+                TextField(
+                  controller: cantidadController,
+                  decoration: InputDecoration(
+                    labelText: 'Cantidad',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                SizedBox(height: 16),
+                // Botones
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Cancelar'),
+                    ),
+                    SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () async {
+                              setState(() {
+                                _isLoading = true;
+                              });
+                              try {
+                                String? imagenUrl = product['imagen'];
+                                if (_image != null) {
+                                  imagenUrl =
+                                      await _uploadImageToFirebase(_image!);
+                                }
+
+                                // Subir nuevas imágenes de la tienda
+                                List<String> storeImgsUrls = [];
+                                // if (product['storeImgs'] != null) {
+                                //   storeImgsUrls.addAll(
+                                //       product['storeImgs'] as List<dynamic>);
+                                // }
+
+                                for (var file in _storeImages) {
+                                  final url =
+                                      await _uploadImageToFirebase(file);
+                                  if (url != null) {
+                                    storeImgsUrls.add(url);
+                                  }
+                                }
+
+                                await FirebaseFirestore.instance
+                                    .collection('productos')
+                                    .doc(product['id'])
+                                    .update({
+                                  'codigo': codigoController.text,
+                                  'nombre': nombreController.text,
+                                  'precio':
+                                      double.tryParse(precioController.text) ??
+                                          0.0,
+                                  'cantidad':
+                                      int.tryParse(cantidadController.text) ??
+                                          0,
+                                  if (imagenUrl != null) 'imagen': imagenUrl,
+                                  'storeImgs': storeImgsUrls,
+                                });
+
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Producto actualizado correctamente')),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Error al actualizar el producto: $e')),
+                                );
+                              } finally {
+                                setState(() {
+                                  _isLoading = false;
+                                });
+                              }
+                            },
+                      child: _isLoading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text('Guardar'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -2174,10 +2343,8 @@ class _InventoryPageState extends State<InventoryPage> {
     bool isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
     bool _isCategoriesExpanded = false;
-    bool _isNegociosExpanded =
-        false; // Estado para controlar la expansión de categorías
-    Map<String, bool> _isCategorySwipeEnabled =
-        {}; // Mapa para controlar el estado del swipe por categoría
+    bool _isNegociosExpanded = false;
+    Map<String, bool> _isCategorySwipeEnabled = {};
     Map<String, bool> _isLoadingPdf = {};
 
     return StreamBuilder<QuerySnapshot>(
@@ -2197,282 +2364,324 @@ class _InventoryPageState extends State<InventoryPage> {
         }).toList();
 
         if (isPortrait) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Sección de Categorías (Colapsable)
-              ExpansionTile(
-                title: Text(
-                  'Categorías',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                initiallyExpanded: _isCategoriesExpanded,
-                onExpansionChanged: (expanded) {
-                  setState(() {
-                    _isCategoriesExpanded = expanded;
-                  });
-                },
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _mostrarBottomSheetCategoria,
-                        icon: Icon(Icons.add),
-                        label: Text('Crear Nueva'),
+          return SingleChildScrollView(
+            // Envolvemos todo en un SingleChildScrollView
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Sección de Categorías (Colapsable)
+                ExpansionTile(
+                  title: Text(
+                    'Categorías',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  initiallyExpanded: _isCategoriesExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _isCategoriesExpanded = expanded;
+                    });
+                  },
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _mostrarBottomSheetCategoria,
+                          icon: Icon(Icons.add),
+                          label: Text('Crear Nueva'),
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: 8),
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('categories')
-                        .snapshots(),
-                    builder: (context, categorySnapshot) {
-                      if (categorySnapshot.hasError) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text('Error al cargar categorías'),
-                        );
-                      }
-                      if (!categorySnapshot.hasData) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      final categoriesDocs = categorySnapshot.data!.docs;
+                    SizedBox(height: 8),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('categories')
+                          .snapshots(),
+                      builder: (context, categorySnapshot) {
+                        if (categorySnapshot.hasError) {
+                          return Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text('Error al cargar categorías'),
+                          );
+                        }
+                        if (!categorySnapshot.hasData) {
+                          return Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final categoriesDocs = categorySnapshot.data!.docs;
 
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: NeverScrollableScrollPhysics(),
-                        itemCount: categoriesDocs.length,
-                        itemBuilder: (context, index) {
-                          return _buildCategoryItem(categoriesDocs[index]);
-                        },
-                      );
-                    },
-                  ),
-                  SizedBox(height: 8),
-                ],
-              ),
-              ExpansionTile(
-                title: Text(
-                  'Negocios Activos',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: NeverScrollableScrollPhysics(),
+                          itemCount: categoriesDocs.length,
+                          itemBuilder: (context, index) {
+                            return _buildCategoryItem(categoriesDocs[index]);
+                          },
+                        );
+                      },
+                    ),
+                    SizedBox(height: 8),
+                  ],
                 ),
-                initiallyExpanded: _isNegociosExpanded,
-                onExpansionChanged: (expanded) {
-                  setState(() {
-                    _isNegociosExpanded = expanded;
-                  });
-                },
-                children: [
-                  SizedBox(height: 8),
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('negocios')
-                        .snapshots(),
-                    builder: (context, negociosSnapshot) {
-                      if (negociosSnapshot.hasError) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text('Error al cargar negocios'),
-                        );
-                      }
-                      if (!negociosSnapshot.hasData) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      final negociosDocs = negociosSnapshot.data!.docs;
-
-                      return ListView.builder(
-                        shrinkWrap: true,
-                        physics: NeverScrollableScrollPhysics(),
-                        itemCount: negociosDocs.length,
-                        itemBuilder: (context, index) {
-                          return _buildNegocioItem(negociosDocs[index]);
-                        },
-                      );
-                    },
+                ExpansionTile(
+                  title: Text(
+                    'Negocios Activos',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 8),
-                ],
-              ),
+                  initiallyExpanded: _isNegociosExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _isNegociosExpanded = expanded;
+                    });
+                  },
+                  children: [
+                    SizedBox(height: 8),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('negocios')
+                          .snapshots(),
+                      builder: (context, negociosSnapshot) {
+                        if (negociosSnapshot.hasError) {
+                          return Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text('Error al cargar negocios'),
+                          );
+                        }
+                        if (!negociosSnapshot.hasData) {
+                          return Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final negociosDocs = negociosSnapshot.data!.docs;
 
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 5.0, vertical: 5.0),
-                child: Text(
-                  'Listado de Negocios',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: NeverScrollableScrollPhysics(),
+                          itemCount: negociosDocs.length,
+                          itemBuilder: (context, index) {
+                            return _buildNegocioItem(negociosDocs[index]);
+                          },
+                        );
+                      },
+                    ),
+                    SizedBox(height: 8),
+                  ],
                 ),
-              ),
-              Expanded(
-                child: ListView.builder(
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 5.0, vertical: 5.0),
+                  child: Text(
+                    'Listado de Negocios',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
                   itemCount: businesses.length,
                   itemBuilder: (context, index) {
                     final business = businesses[index];
                     final businessId = business['id'] as String;
+                    final isDarkMode =
+                        Theme.of(context).brightness == Brightness.dark;
+                    final defaultImage = isDarkMode
+                        ? 'assets/images/moon_blanco.png'
+                        : 'assets/images/moon_negro.png';
 
                     return Dismissible(
                       key: Key(business['id']),
                       direction: DismissDirection.endToStart,
                       confirmDismiss: (direction) async {
                         String input = '';
-                        return await showDialog(
+                        bool? result = await showDialog<bool>(
                           context: context,
-                          builder: (context) {
+                          builder: (BuildContext context) {
                             return AlertDialog(
                               title: Text('¿Eliminar negocio?'),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                      'Para confirmar, escribe el nombre completo del dueño:'),
-                                  SizedBox(height: 10),
-                                  TextField(
-                                    onChanged: (value) => input = value,
-                                    decoration: InputDecoration(
-                                      border: OutlineInputBorder(),
-                                      hintText: 'Nombre del dueño',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              actions: [
+                              content: Text(
+                                  '¿Estás seguro de que deseas eliminar este negocio?'),
+                              actions: <Widget>[
                                 TextButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(false),
                                   child: Text('Cancelar'),
-                                ),
-                                ElevatedButton(
                                   onPressed: () {
-                                    if (input.trim().toLowerCase() ==
-                                        business['nombreDueno']
-                                            .toString()
-                                            .trim()
-                                            .toLowerCase()) {
-                                      _deleteBusiness(business['id']);
-                                      Navigator.of(context).pop(true);
-                                    }
+                                    Navigator.of(context).pop(false);
                                   },
+                                ),
+                                TextButton(
                                   child: Text('Eliminar'),
-                                )
+                                  onPressed: () {
+                                    Navigator.of(context).pop(true);
+                                  },
+                                ),
                               ],
                             );
                           },
                         );
+                        return result ?? false;
+                      },
+                      onDismissed: (direction) async {
+                        try {
+                          await FirebaseFirestore.instance
+                              .collection('negocios')
+                              .doc(businessId)
+                              .delete();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content:
+                                    Text('Negocio eliminado correctamente')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content:
+                                    Text('Error al eliminar el negocio: $e')),
+                          );
+                        }
                       },
                       background: Container(
+                        color: Colors.red,
                         alignment: Alignment.centerRight,
                         padding: EdgeInsets.symmetric(horizontal: 20),
-                        color: Colors.red,
                         child: Icon(Icons.delete, color: Colors.white),
                       ),
-                      child: Card(
-                        margin: EdgeInsets.symmetric(
-                            vertical: 2.0, horizontal: 4.0),
-                        child: ListTile(
-                          leading: business['logo'] != null
-                              ? Image.network(
-                                  business['logo'],
-                                  height: 50,
-                                  width: 50,
-                                  fit: BoxFit.cover,
-                                )
-                              : Icon(Icons.business, size: 50),
-                          title: Text(business['nombreEmpresa']),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Dueño: ${business['nombreDueno']}'),
-                              Text('Teléfono: ${business['telefono']}'),
-                            ],
-                          ),
-                          trailing: IconButton(
-                            icon: _isLoadingPdf[businessId] == true
-                                ? SizedBox(
+                      child: GestureDetector(
+                        onTap: () async {
+                          final products =
+                              await _fetchProductsForBusiness(businessId);
+                          _showProductsDialog(products, business);
+                        },
+                        child: Card(
+                          margin: EdgeInsets.symmetric(
+                              vertical: 2.0, horizontal: 4.0),
+                          child: ListTile(
+                            leading: business['logo'] != null &&
+                                    business['logo'].isNotEmpty
+                                ? Image.network(
+                                    business['logo'],
+                                    height: 50,
+                                    width: 50,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Image.asset(
+                                        defaultImage,
+                                        height: 50,
+                                        width: 50,
+                                        fit: BoxFit.cover,
+                                      );
+                                    },
+                                  )
+                                : Image.asset(
+                                    defaultImage,
+                                    height: 50,
+                                    width: 50,
+                                    fit: BoxFit.cover,
+                                  ),
+                            title: Text(business['nombreEmpresa']),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Dueño: ${business['nombreDueno']}'),
+                                Text('Teléfono: ${business['telefono']}'),
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_isLoadingPdf[businessId] == true)
+                                  SizedBox(
                                     width: 24,
                                     height: 24,
                                     child: CircularProgressIndicator(
-                                        strokeWidth: 2),
+                                      strokeWidth: 2,
+                                    ),
                                   )
-                                : Icon(Icons.print),
-                            onPressed: _isLoadingPdf[businessId] == true
-                                ? null // Deshabilitar el botón durante la carga
-                                : () async {
-                                    setState(() {
-                                      _isLoadingPdf[businessId] = true;
-                                    });
-                                    final products =
-                                        await _fetchProductsForBusiness(
-                                            businessId);
-                                    if (products.isNotEmpty) {
-                                      final pdfFile = await _generateProductPdf(
-                                          business['nombreEmpresa'], products);
-                                      if (pdfFile != null) {
-                                        _openPdf(pdfFile);
-                                      } else {
-                                        // Mostrar un mensaje de error si la generación del PDF falla
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                              content: Text(
-                                                  'Error al generar el PDF.')),
-                                        );
+                                else
+                                  IconButton(
+                                    icon: Icon(Icons.print),
+                                    onPressed: () async {
+                                      setState(() {
+                                        _isLoadingPdf[businessId] = true;
+                                      });
+                                      try {
+                                        final products =
+                                            await _fetchProductsForBusiness(
+                                                businessId);
+                                        if (products.isNotEmpty) {
+                                          final pdfFile =
+                                              await _generateProductPdf(
+                                                  business['nombreEmpresa'],
+                                                  products);
+                                          if (pdfFile != null) {
+                                            await _saveAndOpenPdf(pdfFile,
+                                                '${business['nombreEmpresa']}_productos');
+                                          }
+                                        }
+                                      } finally {
+                                        setState(() {
+                                          _isLoadingPdf[businessId] = false;
+                                        });
                                       }
-                                    } else {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                            content: Text(
-                                                'No hay productos para este negocio.')),
-                                      );
-                                    }
-                                    setState(() {
-                                      _isLoadingPdf[businessId] = false;
-                                    });
-                                  },
+                                    },
+                                  ),
+                              ],
+                            ),
                           ),
-                          onTap: () async {
-                            final products =
-                                await _fetchProductsForBusiness(business['id']);
-                            _showProductsDialog(products);
-                          },
                         ),
                       ),
                     );
                   },
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         }
 
+        // Modo no portrait (horizontal)
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Row(
             children: businesses.map((business) {
               final businessId = business['id'] as String;
+              final isDarkMode =
+                  Theme.of(context).brightness == Brightness.dark;
+              final defaultImage = isDarkMode
+                  ? 'assets/images/moon_blanco.png'
+                  : 'assets/images/moon_negro.png';
 
               return GestureDetector(
                 onTap: () async {
-                  final products =
-                      await _fetchProductsForBusiness(business['id']);
-                  _showProductsDialog(products);
+                  setState(() {
+                    _isLoadingPdf[businessId] = true;
+                  });
+                  try {
+                    final products =
+                        await _fetchProductsForBusiness(businessId);
+                    if (products.isNotEmpty) {
+                      final pdfFile = await _generateProductPdf(
+                          business['nombreEmpresa'], products);
+                      if (pdfFile != null) {
+                        await _saveAndOpenPdf(
+                            pdfFile, '${business['nombreEmpresa']}_productos');
+                      }
+                    }
+                  } finally {
+                    setState(() {
+                      _isLoadingPdf[businessId] = false;
+                    });
+                  }
                 },
                 child: Container(
                   width: 200,
                   margin: EdgeInsets.only(right: 12),
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.grey.shade300),
+                    color: Theme.of(context).cardColor,
+                    border: Border.all(color: Theme.of(context).dividerColor),
                     borderRadius: BorderRadius.circular(6),
                     boxShadow: [
                       BoxShadow(
@@ -2488,83 +2697,53 @@ class _InventoryPageState extends State<InventoryPage> {
                       Stack(
                         alignment: Alignment.topRight,
                         children: [
-                          business['logo'] != null
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: Image.network(
-                                    business['logo'],
-                                    height: 80,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                              : Container(
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Image.network(
+                              business['logo'],
+                              height: 80,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Image.asset(
+                                  defaultImage,
                                   height: 80,
                                   width: double.infinity,
-                                  color: Colors.grey.shade300,
-                                  child: Icon(Icons.business,
-                                      size: 40, color: Colors.grey),
-                                ),
-                          Padding(
-                            padding: const EdgeInsets.all(4.0),
-                            child: InkWell(
-                              onTap: _isLoadingPdf[businessId] == true
-                                  ? null
-                                  : () async {
-                                      setState(() {
-                                        _isLoadingPdf[businessId] = true;
-                                      });
-                                      final products =
-                                          await _fetchProductsForBusiness(
-                                              businessId);
-                                      if (products.isNotEmpty) {
-                                        final pdfFile =
-                                            await _generateProductPdf(
-                                                business['nombreEmpresa'],
-                                                products);
-                                        if (pdfFile != null) {
-                                          _openPdf(pdfFile);
-                                        } else {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                                content: Text(
-                                                    'Error al generar el PDF.')),
-                                          );
-                                        }
-                                      } else {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                              content: Text(
-                                                  'No hay productos para este negocio.')),
-                                        );
-                                      }
-                                      setState(() {
-                                        _isLoadingPdf[businessId] = false;
-                                      });
-                                    },
-                              child: _isLoadingPdf[businessId] == true
-                                  ? SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    )
-                                  : Icon(Icons.print, size: 20),
+                                  fit: BoxFit.cover,
+                                );
+                              },
                             ),
                           ),
+                          if (_isLoadingPdf[businessId] == true)
+                            Container(
+                              height: 80,
+                              width: double.infinity,
+                              color: Colors.black.withOpacity(0.3),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       SizedBox(height: 8),
                       Text(
                         business['nombreEmpresa'],
                         style: TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 16),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      SizedBox(height: 4),
-                      Text('Dueño: ${business['nombreDueno']}'),
-                      Text('Tel: ${business['telefono']}'),
+                      Text(
+                        'Dueño: ${business['nombreDueno']}',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      Text(
+                        'Teléfono: ${business['telefono']}',
+                        style: TextStyle(fontSize: 14),
+                      ),
                     ],
                   ),
                 ),
@@ -2609,7 +2788,7 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
-  Future<void> _openPdf(File pdfFile) async {
+  Future<void> _saveAndOpenPdf(File pdfFile, String businessName) async {
     final result = await OpenFile.open(pdfFile.path);
 
     if (result.type != ResultType.done) {

@@ -28,6 +28,9 @@ class _StoreScreenState extends State<StoreScreen> {
   List<String> _recentSearches = [];
   String? _lastSearchQuery;
   List<DocumentSnapshot> _displayedProducts = [];
+  DocumentSnapshot? _lastDocument;
+  String? _searchQuery;
+  ScrollController _scrollController = ScrollController();
 
   // Categorías y negocios pueden venir de Firestore también
 
@@ -35,8 +38,17 @@ class _StoreScreenState extends State<StoreScreen> {
   void initState() {
     super.initState();
     _selectedCategory = 'Todos';
+    _searchQuery = "";
     _filterProductsByCategory();
     _loadInitialProducts();
+    _scrollController.addListener(() {
+      if (_scrollController.offset >=
+              _scrollController.position.maxScrollExtent &&
+          !_scrollController.position.outOfRange) {
+        // Cargar más productos
+        _loadMoreProducts();
+      }
+    });
   }
 
   @override
@@ -45,19 +57,50 @@ class _StoreScreenState extends State<StoreScreen> {
     super.dispose();
   }
 
-  Query<Map<String, dynamic>> _getProductQuery() {
+  // Query<Map<String, dynamic>> _getProductQuery({
+  //   bool isLoadingMore = false,
+  //   DocumentSnapshot? lastDocument,
+  // }) {
+  //   Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+  //       .collection('productos')
+  //       .where('cantidad', isGreaterThan: 0);
+
+  //   if (_selectedCategoryId != 'Todos' && _selectedCategoryId != null) {
+  //     query = query.where('categoriaId', isEqualTo: _selectedCategoryId);
+  //   }
+
+  //   if (_searchQuery != null && _searchQuery!.isNotEmpty) {
+  //     query = query
+  //         .where('nombre', isGreaterThanOrEqualTo: _searchQuery)
+  //         .where('nombre', isLessThan: _searchQuery! + 'z');
+  //   }
+
+  //   if (isLoadingMore && lastDocument != null) {
+  //     query = query.startAfterDocument(lastDocument);
+  //   }
+
+  //   // Aplicar el límite después del startAfterDocument
+  //   query = query.limit(10);
+
+  //   print('Query: ${query.parameters}'); // Imprimir los parámetros de la query
+
+  //   return query;
+  // }
+
+  Query<Map<String, dynamic>> _getProductQuery({
+    bool isLoadingMore = false,
+    DocumentSnapshot? lastDocument,
+  }) {
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance
         .collection('productos')
-        .where('cantidad', isGreaterThan: 0);
+        .orderBy(FieldPath.documentId);
 
-    if (_selectedCategoryId != 'Todos' && _selectedCategoryId != null) {
-      print('Filtrando por categoriaId: $_selectedCategoryId');
-      query = query.where('categoriaId', isEqualTo: _selectedCategoryId);
-    } else {
-      print('Mostrando todos los productos');
+    if (isLoadingMore && lastDocument != null) {
+      query = query.startAfter([lastDocument.id]);
     }
-    print(
-        'Consulta base generada: ${query.parameters}'); // Imprime los parámetros de la consulta
+
+    query = query.limit(10);
+
     return query;
   }
 
@@ -125,6 +168,7 @@ class _StoreScreenState extends State<StoreScreen> {
       ),
       body: Builder(
         builder: (context) => CustomScrollView(
+          controller: _scrollController,
           slivers: <Widget>[
             SliverAppBar(
               backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -282,47 +326,75 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
 // Función para filtrar productos según categoría seleccionada
+  // Future<void> _filterProductsByCategory() async {
+  //   try {
+  //     Query query = FirebaseFirestore.instance
+  //         .collection('productos')
+  //         .where('cantidad', isGreaterThan: 0);
+
+  //     try {
+  //       if (_selectedCategory != 'Todos') {
+  //         // Primero obtenemos el ID de la categoría seleccionada
+  //         final categoryQuery = await FirebaseFirestore.instance
+  //             .collection('categories')
+  //             .where('nombre', isEqualTo: _selectedCategory)
+  //             .limit(1)
+  //             .get();
+
+  //         if (categoryQuery.docs.isNotEmpty) {
+  //           final categoryId = categoryQuery.docs.first.id;
+  //           query = query.where('categoriaId', isEqualTo: categoryId);
+  //         }
+  //       }
+  //     } catch (e) {
+  //       print("Error al obtener o aplicar filtro de categoría: $e");
+  //       // Aquí podrías manejar el error de la consulta de categorías,
+  //       // por ejemplo, mostrando un mensaje al usuario o estableciendo un estado de error.
+  //       return; // Importante salir de la función si hubo un error crítico.
+  //     }
+
+  //     try {
+  //       final result = await query.get();
+  //       setState(() {
+  //         _products =
+  //             result.docs.map((doc) => Product.fromFirestore(doc)).toList();
+  //       });
+  //     } catch (e) {
+  //       print("Error al obtener la lista de productos filtrados: $e");
+  //       // Aquí podrías manejar el error de la consulta de productos,
+  //       // mostrando un mensaje o estableciendo un estado de error.
+  //     }
+  //   } catch (e) {
+  //     print("Error general en _filterProductsByCategory: $e");
+  //     // Este catch más general podría capturar errores inesperados fuera de las consultas.
+  //   }
+  // }
+
   Future<void> _filterProductsByCategory() async {
     try {
-      Query query = FirebaseFirestore.instance
-          .collection('productos')
-          .where('cantidad', isGreaterThan: 0);
+      Query query = _getProductQuery();
 
-      try {
-        if (_selectedCategory != 'Todos') {
-          // Primero obtenemos el ID de la categoría seleccionada
-          final categoryQuery = await FirebaseFirestore.instance
-              .collection('categories')
-              .where('nombre', isEqualTo: _selectedCategory)
-              .limit(1)
-              .get();
+      if (_selectedCategory != 'Todos') {
+        final categoryQuery = await FirebaseFirestore.instance
+            .collection('categories')
+            .where('nombre', isEqualTo: _selectedCategory)
+            .limit(1)
+            .get();
 
-          if (categoryQuery.docs.isNotEmpty) {
-            final categoryId = categoryQuery.docs.first.id;
-            query = query.where('categoriaId', isEqualTo: categoryId);
-          }
+        if (categoryQuery.docs.isNotEmpty) {
+          final categoryId = categoryQuery.docs.first.id;
+          query = query.where('categoriaId', isEqualTo: categoryId);
         }
-      } catch (e) {
-        print("Error al obtener o aplicar filtro de categoría: $e");
-        // Aquí podrías manejar el error de la consulta de categorías,
-        // por ejemplo, mostrando un mensaje al usuario o estableciendo un estado de error.
-        return; // Importante salir de la función si hubo un error crítico.
       }
 
-      try {
-        final result = await query.get();
-        setState(() {
-          _products =
-              result.docs.map((doc) => Product.fromFirestore(doc)).toList();
-        });
-      } catch (e) {
-        print("Error al obtener la lista de productos filtrados: $e");
-        // Aquí podrías manejar el error de la consulta de productos,
-        // mostrando un mensaje o estableciendo un estado de error.
-      }
+      final result = await query.get();
+      setState(() {
+        _products =
+            result.docs.map((doc) => Product.fromFirestore(doc)).toList();
+        _lastDocument = result.docs.last;
+      });
     } catch (e) {
-      print("Error general en _filterProductsByCategory: $e");
-      // Este catch más general podría capturar errores inesperados fuera de las consultas.
+      print("Error al obtener o aplicar filtro de categoría: $e");
     }
   }
 // Variables de clase que necesitarás
@@ -358,11 +430,14 @@ class _StoreScreenState extends State<StoreScreen> {
                       businesses[index].data() as Map<String, dynamic>;
                   final logoUrl = business['logo'] as String?;
                   final isDarkMode = Get.isDarkMode;
-                  final defaultImage = isDarkMode
-                      ? AssetImage('assets/images/moon_blanco.png')
-                          as ImageProvider<Object>?
-                      : AssetImage('assets/images/moon_negro.png')
-                          as ImageProvider<Object>?;
+                  final defaultImage = Image.asset(
+                    isDarkMode
+                        ? 'assets/images/moon_negro.png'
+                        : 'assets/images/moon_blanco.png',
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
+                  ).image;
 
                   return GestureDetector(
                     onTap: () {
@@ -384,7 +459,16 @@ class _StoreScreenState extends State<StoreScreen> {
                                     : defaultImage,
                             onBackgroundImageError: (exception, stackTrace) =>
                                 print('Error loading image: $exception'),
-                          ),
+                          )
+                          // CircleAvatar(
+                          //   radius: 30,
+                          //   backgroundImage:
+                          //       logoUrl != null && logoUrl.isNotEmpty
+                          //           ? CachedNetworkImageProvider(logoUrl)
+                          //           : defaultImage,
+                          //   onBackgroundImageError: (exception, stackTrace) =>
+                          //       print('Error loading image: $exception'),
+                          // ),
                           //SizedBox(height: 8),
                           // Text(business['nombreEmpresa'] ?? '',
                           //   textAlign: TextAlign.center,
@@ -521,6 +605,33 @@ class _StoreScreenState extends State<StoreScreen> {
         _displayedProducts = snapshot.docs;
       });
     });
+  }
+
+  void _loadProducts() async {
+    final query = _getProductQuery();
+    final result = await query.get();
+
+    setState(() {
+      _products = result.docs.map((doc) => Product.fromFirestore(doc)).toList();
+      _lastDocument = result.docs.last;
+    });
+  }
+
+  void _loadMoreProducts() async {
+    try {
+      final query =
+          _getProductQuery(isLoadingMore: true, lastDocument: _lastDocument);
+      final result = await query.get();
+
+      setState(() {
+        _products.addAll(result.docs.map((doc) => Product.fromFirestore(doc)));
+        if (result.docs.isNotEmpty) {
+          _lastDocument = result.docs.last;
+        }
+      });
+    } catch (e) {
+      print('Error: $e');
+    }
   }
 
   void _showProductDetails(DocumentSnapshot product) {

@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId "com.example.moonpv"
         minSdkVersion 23
-        targetSdkVersion 31  // Cambia de 29 a 30
+        targetSdkVersion 33  // Cambia de 29 a 30
         versionCode 1
         versionName "1.0"
         manifestPlaceholders += [

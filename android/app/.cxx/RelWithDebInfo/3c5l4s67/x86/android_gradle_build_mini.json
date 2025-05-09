@@ -1,0 +1,20 @@
+{
+  "buildFiles": [
+    "/Users/jesusperalta/flutter/packages/flutter_tools/gradle/src/main/groovy/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/jesusperalta/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/jesusperalta/Documents/Programar/moonpv-mobile/android/app/.cxx/RelWithDebInfo/3c5l4s67/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/jesusperalta/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/jesusperalta/Documents/Programar/moonpv-mobile/android/app/.cxx/RelWithDebInfo/3c5l4s67/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {}
+}
