@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:moonpv/inventory/apartadosList.dart';
 import 'package:moonpv/inventory/sales.dart';
+import 'package:moonpv/inventory/salesList.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
@@ -92,10 +94,24 @@ class MainDrawer extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.sell),
-            title: const Text('Ventas'),
+            leading: Icon(Icons.sell),
+            title: Text('Bitacora Ventas'),
+            onTap: () {
+              Get.to(SalesListScreen());
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.person_search_outlined),
+            title: Text('Ventas por Negocio'),
             onTap: () {
               Get.to(SalesPage());
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.shopping_cart_checkout_rounded),
+            title: Text('Apartados'),
+            onTap: () {
+              Get.to(ApartadosListScreen());
             },
           ),
           const ListTile(

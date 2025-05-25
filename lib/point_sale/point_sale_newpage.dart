@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:moonpv/inventory/Ajustes_screen.dart';
+import 'package:moonpv/inventory/apartadosList.dart';
 import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/inventory/sales.dart';
+import 'package:moonpv/inventory/salesList.dart';
 import 'package:moonpv/point_sale/barcode_scanner_point_sale.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
@@ -882,9 +884,23 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                 ),
                 ListTile(
                   leading: Icon(Icons.sell),
-                  title: Text('Ventas'),
+                  title: Text('Bitacora Ventas'),
+                  onTap: () {
+                    Get.to(SalesListScreen());
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.person_search_outlined),
+                  title: Text('Ventas por Negocio'),
                   onTap: () {
                     Get.to(SalesPage());
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.shopping_cart_checkout_rounded),
+                  title: Text('Apartados'),
+                  onTap: () {
+                    Get.to(ApartadosListScreen());
                   },
                 ),
                 if (rol == 'Admin' ||
