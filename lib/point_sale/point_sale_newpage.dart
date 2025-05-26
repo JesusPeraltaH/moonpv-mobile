@@ -311,19 +311,25 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
       if (user != null) {
         // El usuario está autenticado
         print('Usuario autenticado: ${user.uid}');
-        _mostrarSnackBar('Bienvenido, ${user.email}');
+        if (mounted) {
+          _mostrarSnackBar('Bienvenido, ${user.email}');
+        }
       } else {
         // El usuario no está autenticado
         print('Usuario no autenticado');
-        _mostrarSnackBar('No hay un usuario autenticado');
 
         // Redirigir al usuario a la pantalla de inicio de sesión
-        Get.offAll(() => LoginScreen()); // Usando GetX para navegación
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => LoginScreen()),
+            (Route<dynamic> route) => false,
+          );
+        }
       }
     } catch (e) {
       // Manejar errores
       print('Error al verificar autenticación: $e');
-      _mostrarSnackBar('Error al verificar autenticación: $e');
+      // No mostrar el snackbar aquí para evitar el ciclo
     }
   }
 
