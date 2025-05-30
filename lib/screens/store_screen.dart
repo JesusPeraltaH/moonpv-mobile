@@ -8,7 +8,10 @@ import 'package:get/get.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:moonpv/model/producto_model.dart';
 import 'package:moonpv/screens/login_screen.dart';
+import 'package:moonpv/settings/user_settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:moonpv/inventory/main_drawer.dart';
+import 'package:moonpv/screens/favorites_screen.dart';
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -19,6 +22,10 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  List<Map<String, dynamic>> _cartItems = [];
+  bool _showCartButton = false;
+  Map<String, bool> _favorites = {}; // Para mantener el estado de favoritos
 
   String _selectedBusiness = 'Todos';
   String _selectedCategory = 'Todos';
@@ -41,6 +48,8 @@ class _StoreScreenState extends State<StoreScreen> {
     _searchQuery = "";
     _filterProductsByCategory();
     _loadInitialProducts();
+    _loadFavorites();
+    _loadCartItems(); // Cargar items del carrito al iniciar
     _scrollController.addListener(() {
       if (_scrollController.offset >=
               _scrollController.position.maxScrollExtent &&
@@ -56,36 +65,6 @@ class _StoreScreenState extends State<StoreScreen> {
     _debouncer._timer?.cancel();
     super.dispose();
   }
-
-  // Query<Map<String, dynamic>> _getProductQuery({
-  //   bool isLoadingMore = false,
-  //   DocumentSnapshot? lastDocument,
-  // }) {
-  //   Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-  //       .collection('productos')
-  //       .where('cantidad', isGreaterThan: 0);
-
-  //   if (_selectedCategoryId != 'Todos' && _selectedCategoryId != null) {
-  //     query = query.where('categoriaId', isEqualTo: _selectedCategoryId);
-  //   }
-
-  //   if (_searchQuery != null && _searchQuery!.isNotEmpty) {
-  //     query = query
-  //         .where('nombre', isGreaterThanOrEqualTo: _searchQuery)
-  //         .where('nombre', isLessThan: _searchQuery! + 'z');
-  //   }
-
-  //   if (isLoadingMore && lastDocument != null) {
-  //     query = query.startAfterDocument(lastDocument);
-  //   }
-
-  //   // Aplicar el límite después del startAfterDocument
-  //   query = query.limit(10);
-
-  //   print('Query: ${query.parameters}'); // Imprimir los parámetros de la query
-
-  //   return query;
-  // }
 
   Query<Map<String, dynamic>> _getProductQuery({
     bool isLoadingMore = false,
@@ -145,16 +124,30 @@ class _StoreScreenState extends State<StoreScreen> {
             ListTile(
               leading: Icon(Icons.receipt_long),
               title: Text('Pedidos'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navegar a pedidos
-              },
+              onTap: () {},
             ),
             ListTile(
               leading: Icon(Icons.favorite),
               title: Text('Favoritos'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FavoritesScreen(
+                      initialCartItems: _cartItems,
+                    ),
+                  ),
+                );
+                // Actualizar el estado del carrito al regresar
+                _loadCartItems();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.settings),
+              title: Text('Configuración'),
+              onTap: () {
+                Get.to(UserSettingsScreen());
                 // TODO: Navegar a favoritos
               },
             ),
@@ -235,6 +228,17 @@ class _StoreScreenState extends State<StoreScreen> {
           ],
         ),
       ),
+      floatingActionButton: _showCartButton
+          ? FloatingActionButton.extended(
+              onPressed: _showOrderSummary,
+              backgroundColor: Colors.blue,
+              icon: Icon(Icons.shopping_cart, color: Colors.white),
+              label: Text(
+                '${_cartItems.length} ${_cartItems.length == 1 ? 'item' : 'items'}',
+                style: TextStyle(color: Colors.white),
+              ),
+            )
+          : null,
     );
   }
 
@@ -325,51 +329,6 @@ class _StoreScreenState extends State<StoreScreen> {
     );
   }
 
-// Función para filtrar productos según categoría seleccionada
-  // Future<void> _filterProductsByCategory() async {
-  //   try {
-  //     Query query = FirebaseFirestore.instance
-  //         .collection('productos')
-  //         .where('cantidad', isGreaterThan: 0);
-
-  //     try {
-  //       if (_selectedCategory != 'Todos') {
-  //         // Primero obtenemos el ID de la categoría seleccionada
-  //         final categoryQuery = await FirebaseFirestore.instance
-  //             .collection('categories')
-  //             .where('nombre', isEqualTo: _selectedCategory)
-  //             .limit(1)
-  //             .get();
-
-  //         if (categoryQuery.docs.isNotEmpty) {
-  //           final categoryId = categoryQuery.docs.first.id;
-  //           query = query.where('categoriaId', isEqualTo: categoryId);
-  //         }
-  //       }
-  //     } catch (e) {
-  //       print("Error al obtener o aplicar filtro de categoría: $e");
-  //       // Aquí podrías manejar el error de la consulta de categorías,
-  //       // por ejemplo, mostrando un mensaje al usuario o estableciendo un estado de error.
-  //       return; // Importante salir de la función si hubo un error crítico.
-  //     }
-
-  //     try {
-  //       final result = await query.get();
-  //       setState(() {
-  //         _products =
-  //             result.docs.map((doc) => Product.fromFirestore(doc)).toList();
-  //       });
-  //     } catch (e) {
-  //       print("Error al obtener la lista de productos filtrados: $e");
-  //       // Aquí podrías manejar el error de la consulta de productos,
-  //       // mostrando un mensaje o estableciendo un estado de error.
-  //     }
-  //   } catch (e) {
-  //     print("Error general en _filterProductsByCategory: $e");
-  //     // Este catch más general podría capturar errores inesperados fuera de las consultas.
-  //   }
-  // }
-
   Future<void> _filterProductsByCategory() async {
     try {
       Query query = _getProductQuery();
@@ -397,7 +356,6 @@ class _StoreScreenState extends State<StoreScreen> {
       print("Error al obtener o aplicar filtro de categoría: $e");
     }
   }
-// Variables de clase que necesitarás
 
   Widget _buildBusinessesSection() {
     return StreamBuilder<QuerySnapshot>(
@@ -460,20 +418,6 @@ class _StoreScreenState extends State<StoreScreen> {
                             onBackgroundImageError: (exception, stackTrace) =>
                                 print('Error loading image: $exception'),
                           )
-                          // CircleAvatar(
-                          //   radius: 30,
-                          //   backgroundImage:
-                          //       logoUrl != null && logoUrl.isNotEmpty
-                          //           ? CachedNetworkImageProvider(logoUrl)
-                          //           : defaultImage,
-                          //   onBackgroundImageError: (exception, stackTrace) =>
-                          //       print('Error loading image: $exception'),
-                          // ),
-                          //SizedBox(height: 8),
-                          // Text(business['nombreEmpresa'] ?? '',
-                          //   textAlign: TextAlign.center,
-                          //   maxLines: 2,
-                          //   overflow: TextOverflow.ellipsis),
                         ],
                       ),
                     ),
@@ -709,7 +653,6 @@ class _StoreScreenState extends State<StoreScreen> {
                       ],
                     ),
                     SizedBox(height: 12),
-                    // ... (Otros detalles del producto) ...
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -721,7 +664,7 @@ class _StoreScreenState extends State<StoreScreen> {
                           ),
                         ),
                         onPressed: () {
-                          // Lógica para agregar al carrito
+                          _addToCart(data);
                           Navigator.pop(context);
                           _loadSimilarProducts(
                               product); // Cargar similares al cerrar
@@ -846,6 +789,311 @@ class _StoreScreenState extends State<StoreScreen> {
         ],
       ),
     );
+  }
+
+  void _addToCart(Map<String, dynamic> product) {
+    setState(() {
+      // Asegurarnos de que tenemos todos los datos necesarios
+      final cartItem = {
+        'id': product['id'] ?? '',
+        'nombre': product['nombre'] ?? 'Producto sin nombre',
+        'precio': product['precio'] ?? 0.0,
+        'imagen': product['imagen'] ?? '',
+        'cantidad': 1, // Agregamos cantidad por defecto
+      };
+      _cartItems.add(cartItem);
+      _showCartButton = true;
+    });
+  }
+
+  void _showOrderSummary() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text(
+                'Resumen de la Orden',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 20),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _cartItems.length,
+                  itemBuilder: (context, index) {
+                    final item = _cartItems[index];
+                    return ListTile(
+                      leading:
+                          item['imagen'] != null && item['imagen'].isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: item['imagen'],
+                                  width: 50,
+                                  height: 50,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Icon(Icons.image, size: 50),
+                                )
+                              : Icon(Icons.image, size: 50),
+                      title: Text(item['nombre'] ?? 'Producto'),
+                      subtitle: Text(
+                          '\$${item['precio']?.toStringAsFixed(2) ?? '0.00'}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.remove_circle_outline),
+                            onPressed: () {
+                              setState(() {
+                                if (item['cantidad'] > 1) {
+                                  item['cantidad']--;
+                                } else {
+                                  _cartItems.removeAt(index);
+                                  if (_cartItems.isEmpty) {
+                                    _showCartButton = false;
+                                  }
+                                }
+                              });
+                              Navigator.pop(context);
+                              _showOrderSummary();
+                            },
+                          ),
+                          Text('${item['cantidad']}'),
+                          IconButton(
+                            icon: Icon(Icons.add_circle_outline),
+                            onPressed: () {
+                              setState(() {
+                                item['cantidad']++;
+                              });
+                              Navigator.pop(context);
+                              _showOrderSummary();
+                            },
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            onPressed: () {
+                              setState(() {
+                                _cartItems.removeAt(index);
+                                if (_cartItems.isEmpty) {
+                                  _showCartButton = false;
+                                }
+                              });
+                              Navigator.pop(context);
+                              _showOrderSummary();
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Divider(),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total:',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '\$${_calculateTotal().toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    // TODO: Implementar proceso de pago
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 15),
+                    backgroundColor: Colors.blue,
+                  ),
+                  child: Text(
+                    'Proceder al Pago',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  double _calculateTotal() {
+    return _cartItems.fold(0.0, (sum, item) {
+      return sum + ((item['precio'] ?? 0.0) * (item['cantidad'] ?? 1));
+    });
+  }
+
+  // Función para cargar los favoritos del usuario
+  Future<void> _loadFavorites() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final userFavoritesRef =
+          _firestore.collection('userFavorites').doc(user.uid);
+      final userFavoritesDoc = await userFavoritesRef.get();
+
+      if (!userFavoritesDoc.exists) {
+        // Obtener información adicional del usuario
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+        final userData = userDoc.data() ?? {};
+
+        // Si no existe el documento, lo creamos con un array vacío y la información del usuario
+        await userFavoritesRef.set({
+          'userId': user.uid,
+          'userEmail': user.email,
+          'userName': userData['nombre'] ?? userData['name'] ?? 'Usuario',
+          'userRole': userData['role'] ?? 'Cliente',
+          'favorites': [],
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        setState(() {
+          _favorites = {};
+        });
+      } else {
+        final data = userFavoritesDoc.data();
+        if (data != null && data['favorites'] != null) {
+          final List<dynamic> favorites = data['favorites'];
+          setState(() {
+            _favorites = Map.fromEntries(
+              favorites.map((fav) => MapEntry(fav['productId'], true)),
+            );
+          });
+        }
+      }
+    } catch (e) {
+      print('Error al cargar favoritos: $e');
+    }
+  }
+
+  // Función para manejar el toggle de favoritos
+  Future<void> _toggleFavorite(
+      String productId, Map<String, dynamic> productData) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final userFavoritesRef =
+          _firestore.collection('userFavorites').doc(user.uid);
+      final userFavoritesDoc = await userFavoritesRef.get();
+
+      if (!userFavoritesDoc.exists) {
+        await userFavoritesRef.set({
+          'favorites': [
+            {
+              'productId': productId,
+              'productData': productData,
+              'addedAt': DateTime.now().millisecondsSinceEpoch,
+            }
+          ],
+        });
+        setState(() {
+          _favorites[productId] = true;
+        });
+      } else {
+        final data = userFavoritesDoc.data();
+        if (data != null && data['favorites'] != null) {
+          final List<dynamic> favorites = List.from(data['favorites']);
+
+          final existingIndex =
+              favorites.indexWhere((fav) => fav['productId'] == productId);
+
+          if (existingIndex != -1) {
+            favorites.removeAt(existingIndex);
+            setState(() {
+              _favorites.remove(productId);
+            });
+          } else {
+            favorites.add({
+              'productId': productId,
+              'productData': productData,
+              'addedAt': DateTime.now().millisecondsSinceEpoch,
+            });
+            setState(() {
+              _favorites[productId] = true;
+            });
+          }
+
+          await userFavoritesRef.update({
+            'favorites': favorites,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    } catch (e) {
+      print('Error al actualizar favoritos: $e');
+    }
+  }
+
+  Future<void> _loadCartItems() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final cartDoc =
+          await _firestore.collection('userCart').doc(user.uid).get();
+
+      if (cartDoc.exists) {
+        final data = cartDoc.data();
+        if (data != null && data['items'] != null) {
+          setState(() {
+            _cartItems = List<Map<String, dynamic>>.from(data['items']);
+            _showCartButton = _cartItems.isNotEmpty;
+          });
+        }
+      } else {
+        setState(() {
+          _cartItems = [];
+          _showCartButton = false;
+        });
+      }
+    } catch (e) {
+      print('Error al cargar el carrito: $e');
+    }
   }
 }
 
@@ -976,17 +1224,21 @@ class ProductListSection extends StatefulWidget {
 
 class _ProductListSectionState extends State<ProductListSection> {
   final ScrollController _scrollController = ScrollController();
-  final int _limit = 20; // Cantidad de productos a cargar por página
+  final int _limit = 20;
   DocumentSnapshot? _lastDocument;
   bool _isLoading = false;
   List<DocumentSnapshot> _products = [];
   bool _hasMore = true;
+  Map<String, bool> _favorites = {};
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void initState() {
     super.initState();
     _loadMoreProducts();
     _scrollController.addListener(_scrollListener);
+    _loadFavorites();
   }
 
   @override
@@ -1163,12 +1415,33 @@ class _ProductListSectionState extends State<ProductListSection> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              productData['nombre'] ?? 'Sin nombre',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 16),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    productData['nombre'] ?? 'Sin nombre',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    _favorites[product.id] == true
+                                        ? Icons.favorite
+                                        : Icons.favorite_border,
+                                    color: _favorites[product.id] == true
+                                        ? Colors.red
+                                        : Colors.grey,
+                                    size: 20,
+                                  ),
+                                  onPressed: () =>
+                                      _toggleFavorite(product.id, productData),
+                                ),
+                              ],
                             ),
                             SizedBox(height: 4),
                             Text(
@@ -1202,6 +1475,108 @@ class _ProductListSectionState extends State<ProductListSection> {
         ),
       ),
     );
+  }
+
+  Future<void> _toggleFavorite(
+      String productId, Map<String, dynamic> productData) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final userFavoritesRef =
+          _firestore.collection('userFavorites').doc(user.uid);
+      final userFavoritesDoc = await userFavoritesRef.get();
+
+      if (!userFavoritesDoc.exists) {
+        await userFavoritesRef.set({
+          'favorites': [
+            {
+              'productId': productId,
+              'productData': productData,
+              'addedAt': DateTime.now().millisecondsSinceEpoch,
+            }
+          ],
+        });
+        setState(() {
+          _favorites[productId] = true;
+        });
+      } else {
+        final data = userFavoritesDoc.data();
+        if (data != null && data['favorites'] != null) {
+          final List<dynamic> favorites = List.from(data['favorites']);
+
+          final existingIndex =
+              favorites.indexWhere((fav) => fav['productId'] == productId);
+
+          if (existingIndex != -1) {
+            favorites.removeAt(existingIndex);
+            setState(() {
+              _favorites.remove(productId);
+            });
+          } else {
+            favorites.add({
+              'productId': productId,
+              'productData': productData,
+              'addedAt': DateTime.now().millisecondsSinceEpoch,
+            });
+            setState(() {
+              _favorites[productId] = true;
+            });
+          }
+
+          await userFavoritesRef.update({
+            'favorites': favorites,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    } catch (e) {
+      print('Error al actualizar favoritos: $e');
+    }
+  }
+
+  Future<void> _loadFavorites() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final userFavoritesRef =
+          _firestore.collection('userFavorites').doc(user.uid);
+      final userFavoritesDoc = await userFavoritesRef.get();
+
+      if (!userFavoritesDoc.exists) {
+        // Obtener información adicional del usuario
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+        final userData = userDoc.data() ?? {};
+
+        // Si no existe el documento, lo creamos con un array vacío y la información del usuario
+        await userFavoritesRef.set({
+          'userId': user.uid,
+          'userEmail': user.email,
+          'userName': userData['nombre'] ?? userData['name'] ?? 'Usuario',
+          'userRole': userData['role'] ?? 'Cliente',
+          'favorites': [],
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        setState(() {
+          _favorites = {};
+        });
+      } else {
+        final data = userFavoritesDoc.data();
+        if (data != null && data['favorites'] != null) {
+          final List<dynamic> favorites = data['favorites'];
+          setState(() {
+            _favorites = Map.fromEntries(
+              favorites.map((fav) => MapEntry(fav['productId'], true)),
+            );
+          });
+        }
+      }
+    } catch (e) {
+      print('Error al cargar favoritos: $e');
+    }
   }
 }
 

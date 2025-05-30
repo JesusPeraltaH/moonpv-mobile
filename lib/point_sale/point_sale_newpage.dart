@@ -13,6 +13,7 @@ import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:moonpv/screens/payment_management_screen.dart';
+import 'package:moonpv/settings/settings_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
@@ -107,8 +108,13 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                   await prefs.remove('isLoggedIn');
                   await prefs.remove('userId');
 
-                  Get.offAll(() =>
-                      LoginScreen()); // Navegar a la pantalla de inicio de sesión
+                  //Get.offAll(() =>
+                  // LoginScreen());
+                  // Navegar a la pantalla de inicio de sesión
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => LoginScreen()),
+                    (Route<dynamic> route) => false,
+                  );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Error al cerrar sesión: $e')),
@@ -319,12 +325,10 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
         print('Usuario no autenticado');
 
         // Redirigir al usuario a la pantalla de inicio de sesión
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => LoginScreen()),
-            (Route<dynamic> route) => false,
-          );
-        }
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => LoginScreen()),
+          (Route<dynamic> route) => false,
+        );
       }
     } catch (e) {
       // Manejar errores
@@ -1070,7 +1074,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                   leading: Icon(Icons.settings),
                   title: Text('Configuración'),
                   onTap: () {
-                    // Lógica de navegación
+                    Get.to(SettingsScreen());
                   },
                 ),
                 ListTile(

@@ -571,8 +571,21 @@ class _ConteoNegociosScreenState extends State<ConteoNegociosScreen> {
                           child: ListTile(
                             leading: data['logo'] != null
                                 ? Image.network(data['logo'],
-                                    width: 50, height: 50)
-                                : const Icon(Icons.business),
+                                    width: 50, height: 50,
+                                    errorBuilder: (context, error, stackTrace) {
+                                    return Image.asset(
+                                      'assets/images/moon_negro.png',
+                                      width: 50,
+                                      height: 50,
+                                      fit: BoxFit.cover,
+                                    );
+                                  })
+                                : Image.asset(
+                                    'assets/images/moon_negro.png',
+                                    width: 50,
+                                    height: 50,
+                                    fit: BoxFit.cover,
+                                  ),
                             title: Text(
                                 data['nombreEmpresa'] ?? 'Negocio sin nombre'),
                             trailing: Switch(

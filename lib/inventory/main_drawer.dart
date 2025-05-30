@@ -9,6 +9,7 @@ import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:moonpv/screens/payment_management_screen.dart';
+import 'package:moonpv/settings/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'ajustes_screen.dart';
 import 'inventory_page.dart';
@@ -172,7 +173,9 @@ class MainDrawer extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.settings),
             title: const Text('Configuración'),
-            onTap: () {}, // TODO: Implementar navegación
+            onTap: () {
+              Get.to(SettingsScreen());
+            }, // TODO: Implementar navegación
           ),
           ListTile(
             leading: const Icon(Icons.logout),
