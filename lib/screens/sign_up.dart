@@ -6,7 +6,8 @@ import '../screens/store_screen.dart';
 
 class CreateAccountBottomSheet extends StatefulWidget {
   @override
-  _CreateAccountBottomSheetState createState() => _CreateAccountBottomSheetState();
+  _CreateAccountBottomSheetState createState() =>
+      _CreateAccountBottomSheetState();
 }
 
 class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
@@ -18,6 +19,7 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _privacyPolicyAccepted = false;
   AnimationController? _titleAnimationController;
   Animation<double>? _titleAnimation;
   double _titlePosition = 0.0;
@@ -51,7 +53,8 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
       targetPosition = 0.20;
     }
 
-    _titleAnimation = Tween<double>(begin: _titlePosition, end: targetPosition).animate(CurvedAnimation(
+    _titleAnimation = Tween<double>(begin: _titlePosition, end: targetPosition)
+        .animate(CurvedAnimation(
       parent: _titleAnimationController!,
       curve: Curves.easeInOut,
     ));
@@ -106,13 +109,15 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
 
   bool _isValidEmail(String email) {
     // Una expresión regular básica para validar el formato del correo electrónico
-    return RegExp(r'^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$').hasMatch(email);
+    return RegExp(r'^[\w-]+(\.[\w-]+)*@([\w-]+\.)+[a-zA-Z]{2,7}$')
+        .hasMatch(email);
   }
 
- void _nextStep() {
+  void _nextStep() {
     if (_step == 1) {
       if (!_isValidEmail(_emailController.text.trim())) {
-        _showSnackbar("Error", "Por favor, ingresa un correo electrónico válido.", Colors.red);
+        _showSnackbar("Error",
+            "Por favor, ingresa un correo electrónico válido.", Colors.red);
         return;
       }
     }
@@ -122,6 +127,13 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
         _updateTitleAnimation(_step);
       });
     } else {
+      if (!_privacyPolicyAccepted) {
+        _showSnackbar(
+            "Error",
+            "Debes aceptar las políticas de privacidad para continuar.",
+            Colors.red);
+        return;
+      }
       _createUserAccount();
     }
   }
@@ -136,14 +148,17 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
   }
 
   Widget _buildNavigationButton() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = isDark ? Colors.white : Colors.black;
+
     if (_step == 1) {
       return IconButton(
-        icon: Icon(Icons.close),
+        icon: Icon(Icons.close, color: iconColor),
         onPressed: () => Get.back(),
       );
     } else {
       return IconButton(
-        icon: Icon(Icons.arrow_back),
+        icon: Icon(Icons.arrow_back, color: iconColor),
         onPressed: _previousStep,
       );
     }
@@ -172,17 +187,49 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
   }
 
   Widget _buildEmailStep() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = isDark ? Colors.white : Colors.black;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Ingresa tu correo electrónico', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        Text(
+          'Ingresa tu correo electrónico',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : Colors.black,
+          ),
+        ),
         SizedBox(height: 8),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: InputDecoration(
-            hintText: 'ejemplo@correo.com',
-           
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.black : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.white.withOpacity(0.5)
+                    : Colors.black.withOpacity(0.1),
+                blurRadius: 4.0,
+                spreadRadius: 1.0,
+                offset: Offset(0, 0),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            style: TextStyle(color: iconColor),
+            decoration: InputDecoration(
+              hintText: 'ejemplo@correo.com',
+              hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600]),
+              prefixIcon: Icon(Icons.email, color: iconColor),
+              filled: true,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
+            ),
           ),
         ),
       ],
@@ -190,22 +237,57 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
   }
 
   Widget _buildPasswordStep() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = isDark ? Colors.white : Colors.black;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Crea una contraseña segura', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        Text(
+          'Crea una contraseña segura',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : Colors.black,
+          ),
+        ),
         SizedBox(height: 8),
-        TextField(
-          controller: _passwordController,
-          obscureText: _obscurePassword,
-          decoration: InputDecoration(
-            hintText: 'Mínimo 6 caracteres',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            suffixIcon: IconButton(
-              icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-              onPressed: () {
-                setState(() => _obscurePassword = !_obscurePassword);
-              },
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.black : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.white.withOpacity(0.5)
+                    : Colors.black.withOpacity(0.1),
+                blurRadius: 4.0,
+                spreadRadius: 1.0,
+                offset: Offset(0, 0),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            style: TextStyle(color: iconColor),
+            decoration: InputDecoration(
+              hintText: 'Mínimo 6 caracteres',
+              hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600]),
+              prefixIcon: Icon(Icons.lock, color: iconColor),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  color: iconColor,
+                ),
+                onPressed: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+              ),
+              filled: true,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
             ),
           ),
         ),
@@ -214,24 +296,93 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
   }
 
   Widget _buildConfirmPasswordStep() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = isDark ? Colors.white : Colors.black;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Confirma tu contraseña', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        Text(
+          'Confirma tu contraseña',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : Colors.black,
+          ),
+        ),
         SizedBox(height: 8),
-        TextField(
-          controller: _confirmPasswordController,
-          obscureText: _obscureConfirmPassword,
-          decoration: InputDecoration(
-            hintText: 'Reingresa tu contraseña',
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            suffixIcon: IconButton(
-              icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility),
-              onPressed: () {
-                setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
-              },
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.black : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.white.withOpacity(0.5)
+                    : Colors.black.withOpacity(0.1),
+                blurRadius: 4.0,
+                spreadRadius: 1.0,
+                offset: Offset(0, 0),
+              ),
+            ],
+          ),
+          child: TextField(
+            controller: _confirmPasswordController,
+            obscureText: _obscureConfirmPassword,
+            style: TextStyle(color: iconColor),
+            decoration: InputDecoration(
+              hintText: 'Reingresa tu contraseña',
+              hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600]),
+              prefixIcon: Icon(Icons.lock, color: iconColor),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureConfirmPassword
+                      ? Icons.visibility_off
+                      : Icons.visibility,
+                  color: iconColor,
+                ),
+                onPressed: () {
+                  setState(
+                      () => _obscureConfirmPassword = !_obscureConfirmPassword);
+                },
+              ),
+              filled: true,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
             ),
           ),
+        ),
+        SizedBox(height: 20),
+        Row(
+          children: [
+            Checkbox(
+              value: _privacyPolicyAccepted,
+              onChanged: (bool? value) {
+                setState(() {
+                  _privacyPolicyAccepted = value ?? false;
+                });
+              },
+              activeColor: isDark ? Colors.white : Colors.black,
+              checkColor: isDark ? Colors.black : Colors.white,
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _privacyPolicyAccepted = !_privacyPolicyAccepted;
+                  });
+                },
+                child: Text(
+                  'Acepto las políticas de privacidad y términos de uso',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -239,85 +390,110 @@ class _CreateAccountBottomSheetState extends State<CreateAccountBottomSheet>
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-        top: 20,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildNavigationButton(), // Utiliza la función para el botón de navegación
-              AnimatedBuilder(
-                animation: _titleAnimationController!,
-                builder: (context, child) {
-                  return Transform.translate(
-                    offset: Offset(MediaQuery.of(context).size.width * _titleAnimation!.value, 0.0),
-                    child: child,
-                  );
-                },
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconColor = isDark ? Colors.white : Colors.black;
+
+    return Container(
+      color: isDark ? Colors.black : Colors.white,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          top: 20,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildNavigationButton(),
+                AnimatedBuilder(
+                  animation: _titleAnimationController!,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(
+                          MediaQuery.of(context).size.width *
+                              _titleAnimation!.value,
+                          0.0),
+                      child: child,
+                    );
+                  },
+                  child: Text(
+                    'Crear Cuenta',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ),
+                SizedBox(width: 48),
+              ],
+            ),
+            SizedBox(height: 30),
+            AnimatedSwitcher(
+              duration: Duration(milliseconds: 300),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                final inFromRight = Tween<Offset>(
+                  begin: Offset(1.0, 0.0),
+                  end: Offset.zero,
+                ).animate(animation);
+                final inFromLeft = Tween<Offset>(
+                  begin: Offset(-1.0, 0.0),
+                  end: Offset.zero,
+                ).animate(animation);
+
+                final offsetAnimation = _step == 1 ? inFromRight : inFromLeft;
+
+                return SlideTransition(
+                  position: offsetAnimation,
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: _buildStepContent(),
+            ),
+            SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF000000),
+                  foregroundColor: isDark ? Colors.white : Colors.white,
+                  shape:
+                      RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                  elevation: isDark ? 4 : 2,
+                  shadowColor: isDark
+                      ? Colors.white.withOpacity(0.3)
+                      : Colors.black.withOpacity(0.2),
+                ),
+                onPressed: _isLoading ? null : _nextStep,
+                child: _isLoading
+                    ? SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(color: Colors.white))
+                    : Text(_step < 3 ? 'Siguiente' : 'Crear Cuenta',
+                        style: TextStyle(fontSize: 16)),
+              ),
+            ),
+            SizedBox(height: 15),
+            Center(
+              child: TextButton(
+                onPressed: () => Get.back(),
                 child: Text(
-                  'Crear Cuenta',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  '¿Ya tienes una cuenta? Iniciar sesión',
+                  style: TextStyle(
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                  ),
                 ),
               ),
-              SizedBox(width: 48), // Espacio para alinear el título
-            ],
-          ),
-          SizedBox(height: 30),
-          AnimatedSwitcher(
-            duration: Duration(milliseconds: 300),
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              final inFromRight = Tween<Offset>(
-                begin: Offset(1.0, 0.0),
-                end: Offset.zero,
-              ).animate(animation);
-              final inFromLeft = Tween<Offset>(
-                begin: Offset(-1.0, 0.0),
-                end: Offset.zero,
-              ).animate(animation);
-
-              final offsetAnimation = _step == 1 ? inFromRight : inFromLeft;
-
-              return SlideTransition(
-                position: offsetAnimation,
-                child: FadeTransition(opacity: animation, child: child),
-              );
-            },
-            child: _buildStepContent(),
-          ),
-          SizedBox(height: 30),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(vertical: 15),
-               
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: _isLoading ? null : _nextStep,
-              child: _isLoading
-                  ? SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(color: Colors.white))
-                  : Text(_step < 3 ? 'Siguiente' : 'Crear Cuenta', style: TextStyle(fontSize: 16)),
             ),
-          ),
-          SizedBox(height: 15),
-          Center(
-            child: TextButton(
-              onPressed: () => Get.back(),
-              child: Text('¿Ya tienes una cuenta? Iniciar sesión', style: TextStyle(color: Colors.grey[700])),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

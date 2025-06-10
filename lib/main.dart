@@ -67,6 +67,7 @@ import 'package:moonpv/point_sale/point_sale_newpage.dart';
 import 'package:moonpv/screens/IntermidScreen.dart';
 import 'package:moonpv/theme/zara_theme.dart';
 import 'firebase_options.dart';
+import 'package:moonpv/controllers/cart_controller.dart'; // Import CartController
 
 class RouteObserverImpl extends NavigatorObserver {
   @override
@@ -112,6 +113,16 @@ class RouteObserverImpl extends NavigatorObserver {
 }
 
 final routeObserver = RouteObserverImpl();
+
+// Define a global binding class
+class AppBindings extends Bindings {
+  @override
+  void dependencies() {
+    // Put the CartController globally
+    Get.put<CartController>(CartController());
+    // Add other global controllers here if needed
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -160,6 +171,7 @@ class MyApp extends StatelessWidget {
       darkTheme: ZaraTheme.darkTheme,
       home: IntermidScreen(), // Widget que maneja el splash
       navigatorObservers: [routeObserver], // Aquí implementamos el observer
+      initialBinding: AppBindings(), // <-- Add the global binding here
       getPages: [
         GetPage(
             name: '/inventory',
@@ -170,6 +182,9 @@ class MyApp extends StatelessWidget {
             page: () =>
                 SalespointNewSalePage()), // Asegúrate de que SalespointNewSalePage tenga una ruta nombrada
         // Define otras rutas de tu aplicación aquí
+        // Add routes for your main screens if you want to use named navigation fully
+        // GetPage(name: '/store', page: () => StoreScreen()),
+        // GetPage(name: '/favorites', page: () => FavoritesScreen()),
       ],
     );
   }

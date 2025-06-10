@@ -4,6 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:get/get.dart';
 import 'store_screen.dart';
+import 'package:moonpv/screens/store_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:moonpv/widgets/product_image_widget.dart';
+import 'package:moonpv/controllers/cart_controller.dart';
+import 'package:moonpv/widgets/cart_bottom_sheet.dart';
 
 class FavoritesScreen extends StatefulWidget {
   final List<Map<String, dynamic>> initialCartItems;
@@ -23,25 +28,18 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<Map<String, dynamic>> _favorites = [];
   bool _isLoading = true;
-  bool _showCartButton = false;
-  List<Map<String, dynamic>> _cartItems = [];
+  final CartController cartController = Get.find();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadFavorites();
-    // Inicializar el estado del carrito con los items recibidos
-    setState(() {
-      _cartItems = widget.initialCartItems;
-      _showCartButton = widget.initialCartItems.isNotEmpty;
-    });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _loadCartItems(); // Recargar cuando la pantalla se vuelve visible
   }
 
   @override
@@ -52,9 +50,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _loadCartItems();
-    }
+    if (state == AppLifecycleState.resumed) {}
   }
 
   Future<void> _loadFavorites() async {
@@ -84,51 +80,6 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       setState(() {
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _loadCartItems() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return;
-
-      final cartDoc =
-          await _firestore.collection('userCart').doc(user.uid).get();
-
-      if (cartDoc.exists) {
-        final data = cartDoc.data();
-        if (data != null && data['items'] != null) {
-          final items = List<Map<String, dynamic>>.from(data['items']);
-          if (mounted) {
-            setState(() {
-              _cartItems = items;
-              _showCartButton = items.isNotEmpty;
-            });
-          }
-        } else {
-          if (mounted) {
-            setState(() {
-              _cartItems = [];
-              _showCartButton = false;
-            });
-          }
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _cartItems = [];
-            _showCartButton = false;
-          });
-        }
-      }
-    } catch (e) {
-      print('Error al cargar el carrito: $e');
-      if (mounted) {
-        setState(() {
-          _cartItems = [];
-          _showCartButton = false;
-        });
-      }
     }
   }
 
@@ -163,143 +114,25 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   }
 
   Future<void> _addToCart(Map<String, dynamic> favorite) async {
-    if (!mounted) return;
+    final productData = favorite['productData'];
+    if (productData == null) return; // Ensure product data exists
 
-    try {
-      print('Objeto favorite completo: $favorite'); // Debug print
-      final user = _auth.currentUser;
-      if (user == null) return;
+    print(
+        'FavoritesScreen: Adding product to cart: $productData'); // Debug print
+    // Pass the original productData to the CartController
+    cartController.addToCart(productData);
 
-      final cartRef = _firestore.collection('userCart').doc(user.uid);
-      final cartDoc = await cartRef.get();
-
-      // Obtener los datos del producto del objeto favorite
-      final productData = favorite['productData'];
-      print('Datos del producto: $productData'); // Debug print
-
-      // Preparar los datos del producto para el carrito
-      final cartItem = {
-        'id': favorite['productId'],
-        'nombre': productData['nombre'] ?? 'Producto sin nombre',
-        'precio': productData['precio'] ?? 0.0,
-        'imagen': productData['imagen'] ??
-            (productData['storeImgs'] != null &&
-                    productData['storeImgs'].isNotEmpty
-                ? productData['storeImgs'][0]
-                : ''),
-        'cantidad': 1,
-      };
-
-      print('Item a agregar al carrito: $cartItem'); // Debug print
-
-      if (!cartDoc.exists) {
-        // Si no existe el carrito, lo creamos
-        await cartRef.set({
-          'userId': user.uid,
-          'items': [cartItem],
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-        setState(() {
-          _cartItems = [cartItem];
-          _showCartButton = true;
-        });
-      } else {
-        // Si existe, actualizamos el array de items
-        final data = cartDoc.data();
-        if (data != null && data['items'] != null) {
-          final List<dynamic> items = List.from(data['items']);
-
-          // Buscar si el producto ya está en el carrito
-          final existingIndex =
-              items.indexWhere((item) => item['id'] == favorite['productId']);
-
-          if (existingIndex != -1) {
-            // Si existe, incrementamos la cantidad
-            items[existingIndex]['cantidad'] =
-                (items[existingIndex]['cantidad'] ?? 0) + 1;
-          } else {
-            // Si no existe, lo agregamos
-            items.add(cartItem);
-          }
-
-          await cartRef.update({
-            'items': items,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-          setState(() {
-            _cartItems = List<Map<String, dynamic>>.from(items);
-            _showCartButton = true;
-          });
-        }
-      }
-
-      if (!mounted) return;
-
-      // Usar un BuildContext fresco para mostrar el SnackBar
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      scaffoldMessenger.clearSnackBars();
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text('Producto agregado al carrito'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    } catch (e) {
-      print('Error al agregar al carrito: $e');
-      if (!mounted) return;
-
-      // Usar un BuildContext fresco para mostrar el SnackBar de error
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      scaffoldMessenger.clearSnackBars();
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text('Error al agregar al carrito'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  Widget _buildProductImage(Map<String, dynamic> productData) {
-    final isDarkMode = Get.isDarkMode;
-    final storeImgs = productData['productData']['storeImgs'] as List<dynamic>?;
-    final String? imageUrl = productData['productData']['imageUrl'];
-    final defaultImage = isDarkMode
-        ? 'assets/images/moon_negro.png'
-        : 'assets/images/moon_blanco.png';
-
-    Widget imageWidget;
-
-    if (imageUrl?.isNotEmpty == true) {
-      imageWidget = CachedNetworkImage(
-        imageUrl: imageUrl!,
-        fit: BoxFit.cover,
-        placeholder: (context, url) =>
-            Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => Icon(Icons.error),
-      );
-    } else if (storeImgs != null &&
-        storeImgs.isNotEmpty &&
-        storeImgs[0]?.isNotEmpty == true) {
-      imageWidget = CachedNetworkImage(
-        imageUrl: storeImgs[0],
-        fit: BoxFit.cover,
-        placeholder: (context, url) =>
-            Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => Icon(Icons.error),
-      );
-    } else {
-      imageWidget = Image.asset(
-        defaultImage,
-        fit: BoxFit.cover,
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-      child: imageWidget,
+    // Show the cart bottom sheet
+    Get.bottomSheet(
+      SizedBox(
+        height: MediaQuery.of(context).size.height * 0.75,
+        child: CartBottomSheet(),
+      ),
+      isScrollControlled: true,
+      useRootNavigator: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
     );
   }
 
@@ -336,6 +169,9 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? Colors.black
+          : Colors.white,
       appBar: AppBar(
         title: Text('Favoritos'),
       ),
@@ -345,74 +181,102 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         itemBuilder: (context, index) {
           final favorite = _favorites[index];
           final productData = favorite['productData'];
+          final String productId = favorite['productId'];
+          final String productName = productData['nombre'] ?? 'Sin nombre';
+          final String productPrice =
+              '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}';
+          final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
           return Card(
-            elevation: 2,
+            elevation: 0,
             margin: EdgeInsets.only(bottom: 16),
+            color: isDark ? Colors.grey[900] : Colors.white,
             child: Row(
               children: [
                 Container(
                   width: 120,
                   height: 120,
-                  child: _buildProductImage(favorite),
+                  child: ProductImageWidget(productData: productData),
                 ),
                 Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  child: Container(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Container(
+                        color: isDark ? Colors.grey[900] : Colors.white,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisSize: MainAxisSize.max,
                           children: [
-                            Expanded(
-                              child: Text(
-                                productData['nombre'] ?? 'Sin nombre',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Column(
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
+                                Expanded(
+                                  child: Text(
+                                    productName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color:
+                                          isDark ? Colors.white : Colors.black,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                                 IconButton(
                                   icon: Icon(Icons.favorite,
                                       color: Colors.red, size: 20),
-                                  onPressed: () =>
-                                      _removeFavorite(favorite['productId']),
-                                ),
-                                IconButton(
-                                  icon: Icon(Icons.shopping_cart,
-                                      color: Colors.blue, size: 20),
-                                  onPressed: () => _addToCart(favorite),
+                                  onPressed: () => _removeFavorite(productId),
                                 ),
                               ],
                             ),
+                            SizedBox(height: 8),
+                            Text(
+                              productPrice,
+                              style: TextStyle(
+                                color: isDark ? Colors.white70 : Colors.green,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: SizedBox(
+                                width: 120,
+                                child: ElevatedButton(
+                                  onPressed: () => _addToCart(favorite),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: cartController.cartItems
+                                            .any((item) =>
+                                                item['id'] == productId)
+                                        ? Colors.blue
+                                        : Colors.grey[400],
+                                    foregroundColor: cartController.cartItems
+                                            .any((item) =>
+                                                item['id'] == productId)
+                                        ? Colors.white
+                                        : (isDark
+                                            ? Colors.white
+                                            : Colors.black87),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                    padding: EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 8),
+                                    textStyle: TextStyle(fontSize: 12),
+                                  ),
+                                  child: Text(
+                                    'Agregar al Carrito',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
-                        SizedBox(height: 8),
-                        Text(
-                          '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Disponibles: ${productData['cantidad'] ?? 0}',
-                          style: TextStyle(
-                            color: productData['cantidad'] > 0
-                                ? Colors.black54
-                                : Colors.red,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -421,22 +285,76 @@ class _FavoritesScreenState extends State<FavoritesScreen>
           );
         },
       ),
-      floatingActionButton: _showCartButton
-          ? FloatingActionButton.extended(
-              onPressed: () async {
-                Navigator.pop(context);
-                if (mounted) {
-                  _loadCartItems(); // Recargar el estado del carrito
-                }
-              },
-              backgroundColor: Colors.blue,
-              icon: Icon(Icons.shopping_cart, color: Colors.white),
-              label: Text(
-                '${_cartItems.length} ${_cartItems.length == 1 ? 'item' : 'items'}',
-                style: TextStyle(color: Colors.white),
-              ),
-            )
-          : null,
+      floatingActionButton: Obx(
+        () => cartController.showCartButton.value
+            ? FloatingActionButton.extended(
+                onPressed: () {
+                  Get.bottomSheet(
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.75,
+                      child: CartBottomSheet(),
+                    ),
+                    isScrollControlled: true,
+                    useRootNavigator: true,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                  );
+                },
+                backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(Icons.shopping_cart,
+                            color:
+                                Get.isDarkMode ? Colors.black : Colors.white),
+                        if (cartController.cartItems.isNotEmpty)
+                          Positioned(
+                            right: -8,
+                            top: -8,
+                            child: Container(
+                              padding: EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color: Get.isDarkMode
+                                        ? Colors.black
+                                        : Colors.white,
+                                    width: 1.5),
+                              ),
+                              constraints: BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              child: Obx(() => Text(
+                                    '${cartController.cartItems.length}',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            : Container(),
+      ),
     );
+  }
+
+  double _calculateTotal() {
+    return _favorites.fold(0.0, (sum, item) {
+      return sum + ((item['precio'] ?? 0.0) * (item['cantidad'] ?? 1));
+    });
   }
 }

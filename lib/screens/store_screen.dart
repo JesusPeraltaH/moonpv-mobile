@@ -12,6 +12,10 @@ import 'package:moonpv/settings/user_settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:moonpv/inventory/main_drawer.dart';
 import 'package:moonpv/screens/favorites_screen.dart';
+import 'package:moonpv/widgets/product_image_widget.dart';
+import 'package:moonpv/controllers/cart_controller.dart';
+import 'package:moonpv/widgets/cart_bottom_sheet.dart';
+import 'package:moonpv/widgets/drawer_store_screen.dart';
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -23,9 +27,9 @@ class StoreScreen extends StatefulWidget {
 class _StoreScreenState extends State<StoreScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  List<Map<String, dynamic>> _cartItems = [];
-  bool _showCartButton = false;
   Map<String, bool> _favorites = {}; // Para mantener el estado de favoritos
+  bool _isAppBarVisible =
+      false; // Nuevo estado para controlar la visibilidad de la AppBar
 
   String _selectedBusiness = 'Todos';
   String _selectedCategory = 'Todos';
@@ -39,29 +43,45 @@ class _StoreScreenState extends State<StoreScreen> {
   String? _searchQuery;
   ScrollController _scrollController = ScrollController();
 
+  // Get the CartController instance
+  final CartController cartController = Get.find();
+
   // Categorías y negocios pueden venir de Firestore también
 
   @override
   void initState() {
     super.initState();
     _selectedCategory = 'Todos';
+    _selectedCategoryId = 'Todos';
+    _selectedBusiness = 'Todos';
     _searchQuery = "";
-    _filterProductsByCategory();
-    _loadInitialProducts();
     _loadFavorites();
-    _loadCartItems(); // Cargar items del carrito al iniciar
-    _scrollController.addListener(() {
-      if (_scrollController.offset >=
-              _scrollController.position.maxScrollExtent &&
-          !_scrollController.position.outOfRange) {
-        // Cargar más productos
-        _loadMoreProducts();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final scrollOffset = _scrollController.offset;
+      final expandedHeight = 230.0; // Altura expandida del SliverAppBar
+      final threshold =
+          expandedHeight - kToolbarHeight; // Umbral para mostrar/ocultar
+
+      if (scrollOffset > threshold && !_isAppBarVisible) {
+        setState(() {
+          _isAppBarVisible = true;
+        });
+      } else if (scrollOffset <= threshold && _isAppBarVisible) {
+        setState(() {
+          _isAppBarVisible = false;
+        });
       }
-    });
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _debouncer._timer?.cancel();
     super.dispose();
   }
@@ -74,11 +94,13 @@ class _StoreScreenState extends State<StoreScreen> {
         .collection('productos')
         .orderBy(FieldPath.documentId);
 
-    if (isLoadingMore && lastDocument != null) {
-      query = query.startAfter([lastDocument.id]);
+    if (_selectedCategoryId != null && _selectedCategoryId != 'Todos') {
+      query = query.where('categoriaId', isEqualTo: _selectedCategoryId);
     }
 
-    query = query.limit(10);
+    if (_selectedBusiness != 'Todos') {
+      query = query.where('negocioId', isEqualTo: _selectedBusiness);
+    }
 
     return query;
   }
@@ -88,99 +110,95 @@ class _StoreScreenState extends State<StoreScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Get.isDarkMode ? Colors.black : Colors.white,
       drawerEdgeDragWidth: 40,
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: isDark ? Colors.black : Colors.grey.shade200,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Image.asset(
-                      isDark
-                          ? 'assets/images/moon_blanco.png'
-                          : 'assets/images/moon_negro.png',
-                      height: 50,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'MoonConcept',
-                    style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
+      drawer: DrawerStoreScreen(
+        isDark: isDark,
+        onPedidosTap: () {/* TODO: Implement Pedidos navigation */},
+        onFavoritesTap: () async {
+          Navigator.pop(context); // Close the drawer
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FavoritesScreen(),
             ),
-            ListTile(
-              leading: Icon(Icons.receipt_long),
-              title: Text('Pedidos'),
-              onTap: () {},
-            ),
-            ListTile(
-              leading: Icon(Icons.favorite),
-              title: Text('Favoritos'),
-              onTap: () async {
-                Navigator.pop(context);
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => FavoritesScreen(
-                      initialCartItems: _cartItems,
-                    ),
-                  ),
-                );
-                // Actualizar el estado del carrito al regresar
-                _loadCartItems();
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Configuración'),
-              onTap: () {
-                Get.to(UserSettingsScreen());
-                // TODO: Navegar a favoritos
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.logout),
-              title: Text('Cerrar sesión'),
-              onTap: () => _logout(context),
-            ),
-          ],
-        ),
+          );
+        },
+        onSettingsTap: () {
+          Get.to(UserSettingsScreen());
+        },
+        onLogoutTap: () => _logout(context),
       ),
       body: Builder(
         builder: (context) => CustomScrollView(
           controller: _scrollController,
           slivers: <Widget>[
             SliverAppBar(
-              backgroundColor: Theme.of(context).brightness == Brightness.dark
-                  ? Color(0xFF757575) // Color para el tema oscuro
-                  : Colors.white,
-              expandedHeight: 230.0,
+              expandedHeight: 180.0,
               floating: false,
               pinned: true,
+              stretch: true,
+              collapsedHeight: _isAppBarVisible ? kToolbarHeight : 0,
+              toolbarHeight: _isAppBarVisible ? kToolbarHeight : 0,
+              automaticallyImplyLeading: false,
+              leading: _isAppBarVisible
+                  ? Builder(
+                      builder: (context) => IconButton(
+                        icon: Icon(
+                          Icons.menu,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                        onPressed: () => Scaffold.of(context).openDrawer(),
+                      ),
+                    )
+                  : null,
+              title: _isAppBarVisible
+                  ? Container(
+                      height: kToolbarHeight,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(width: 30),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: Image.asset(
+                                isDark
+                                    ? 'assets/images/moon_solo_blanco_recortada.png'
+                                    : 'assets/images/moon_solo_negro_recortada.png',
+                                height: 30,
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 16.0),
+                            child: Image.asset(
+                              isDark
+                                  ? 'assets/images/conceptstore_blanco.png'
+                                  : 'assets/images/conceptstore.png',
+                              height: 30,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : null,
               flexibleSpace: FlexibleSpaceBar(
-                background: Padding(
-                  padding: const EdgeInsets.only(
-                      left: 120, bottom: 0, right: 0, top: 50),
-                  child: Image.asset(
-                    isDark
-                        ? 'assets/images/moon_blanco.png'
-                        : 'assets/images/moon_negro.png',
-                    height: 150,
+                background: Container(
+                  color: isDark ? Colors.black : Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                        left: 120, bottom: 0, right: 0, top: 50),
+                    child: Image.asset(
+                      isDark
+                          ? 'assets/images/moon_blanco_recortado.png'
+                          : 'assets/images/moon_negro_recortado.png',
+                      height: 90,
+                    ),
                   ),
                 ),
+                titlePadding: EdgeInsets.zero,
+                centerTitle: true,
               ),
             ),
             SliverPersistentHeader(
@@ -220,25 +238,65 @@ class _StoreScreenState extends State<StoreScreen> {
               ),
             ),
             ProductListSection(
-              // <- ProductListSection ahora devuelve un Sliver
-              selectedCategory: _selectedCategory,
+              selectedCategoryId: _selectedCategoryId,
+              selectedBusiness: _selectedBusiness,
               showProductDetails: _showProductDetails,
               getProductQuery: _getProductQuery,
             ),
           ],
         ),
       ),
-      floatingActionButton: _showCartButton
-          ? FloatingActionButton.extended(
-              onPressed: _showOrderSummary,
-              backgroundColor: Colors.blue,
-              icon: Icon(Icons.shopping_cart, color: Colors.white),
-              label: Text(
-                '${_cartItems.length} ${_cartItems.length == 1 ? 'item' : 'items'}',
-                style: TextStyle(color: Colors.white),
-              ),
-            )
-          : null,
+      floatingActionButton: Obx(
+        () => cartController.showCartButton.value
+            ? FloatingActionButton.extended(
+                onPressed: _showOrderSummary,
+                backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(Icons.shopping_cart,
+                            color:
+                                Get.isDarkMode ? Colors.black : Colors.white),
+                        if (cartController.cartItems.isNotEmpty)
+                          Positioned(
+                            right: -8,
+                            top: -8,
+                            child: Container(
+                              padding: EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color: Get.isDarkMode
+                                        ? Colors.black
+                                        : Colors.white,
+                                    width: 1.5),
+                              ),
+                              constraints: BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              child: Obx(() => Text(
+                                    '${cartController.cartItems.length}',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            : Container(), // Use Container() or SizedBox.shrink() for the hidden state
+      ),
     );
   }
 
@@ -274,26 +332,31 @@ class _StoreScreenState extends State<StoreScreen> {
                   .toList();
 
               // Crear lista de nombres de categorías
-              final categories = ['Todos'];
+              final categories = [
+                {'name': 'Todos', 'id': 'Todos'}
+              ];
               categories.addAll(activeCategories
-                  .map((doc) => doc['nombre'] as String)
+                  .map((doc) => {'name': doc['nombre'] as String, 'id': doc.id})
                   .toList());
 
               return ListView.builder(
                 scrollDirection: Axis.horizontal,
                 itemCount: categories.length,
                 itemBuilder: (context, index) {
-                  final categoryName = categories[index];
-                  String? categoryId;
-                  if (index > 0) {
-                    categoryId = activeCategories[index - 1]
-                        .id; // ID de la categoría activa
-                  }
+                  final category = categories[index];
+                  final categoryName = category['name'];
+                  final categoryId = category['id'];
 
                   return GestureDetector(
                     onTap: () {
                       setState(() {
-                        _selectedCategoryId = categoryId;
+                        if (categoryId == 'Todos') {
+                          _selectedCategoryId = 'Todos';
+                          _selectedBusiness = 'Todos';
+                        } else {
+                          _selectedCategoryId = categoryId;
+                          _selectedBusiness = 'Todos';
+                        }
                         print(
                             'Categoría seleccionada: $categoryName, ID: $_selectedCategoryId');
                       });
@@ -302,19 +365,15 @@ class _StoreScreenState extends State<StoreScreen> {
                       margin: EdgeInsets.symmetric(horizontal: 8),
                       padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _selectedCategoryId == categoryId ||
-                                (_selectedCategoryId == 'Todos' &&
-                                    categoryName == 'Todos')
+                        color: _selectedCategoryId == categoryId
                             ? Colors.black
                             : Colors.grey[200],
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
-                        child: Text(categoryName,
+                        child: Text(categoryName!,
                             style: TextStyle(
-                                color: _selectedCategoryId == categoryId ||
-                                        (_selectedCategoryId == 'Todos' &&
-                                            categoryName == 'Todos')
+                                color: _selectedCategoryId == categoryId
                                     ? Colors.white
                                     : Colors.black)),
                       ),
@@ -329,34 +388,6 @@ class _StoreScreenState extends State<StoreScreen> {
     );
   }
 
-  Future<void> _filterProductsByCategory() async {
-    try {
-      Query query = _getProductQuery();
-
-      if (_selectedCategory != 'Todos') {
-        final categoryQuery = await FirebaseFirestore.instance
-            .collection('categories')
-            .where('nombre', isEqualTo: _selectedCategory)
-            .limit(1)
-            .get();
-
-        if (categoryQuery.docs.isNotEmpty) {
-          final categoryId = categoryQuery.docs.first.id;
-          query = query.where('categoriaId', isEqualTo: categoryId);
-        }
-      }
-
-      final result = await query.get();
-      setState(() {
-        _products =
-            result.docs.map((doc) => Product.fromFirestore(doc)).toList();
-        _lastDocument = result.docs.last;
-      });
-    } catch (e) {
-      print("Error al obtener o aplicar filtro de categoría: $e");
-    }
-  }
-
   Widget _buildBusinessesSection() {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestore.collection('negocios').snapshots(),
@@ -368,7 +399,25 @@ class _StoreScreenState extends State<StoreScreen> {
           );
         }
 
-        final businesses = snapshot.data!.docs;
+        final businessesDocs = snapshot.data!.docs;
+
+        // FILTER businesses where 'activo' == true
+        final activeBusinessesDocs = businessesDocs
+            .where(
+                (doc) => (doc.data() as Map<String, dynamic>)['activo'] == true)
+            .toList();
+
+        // Add a 'Todos' option at the beginning
+        final List<Map<String, dynamic>> businesses = [
+          {'name': 'Todos', 'id': 'Todos'}
+        ];
+        businesses.addAll(activeBusinessesDocs
+            .map((doc) => {
+                  'name': doc['nombreEmpresa'] as String,
+                  'id': doc.id,
+                  'logo': doc['logo'] as String?
+                }) // Get logo (can be null)
+            .toList());
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,23 +433,44 @@ class _StoreScreenState extends State<StoreScreen> {
                 scrollDirection: Axis.horizontal,
                 itemCount: businesses.length,
                 itemBuilder: (context, index) {
-                  final business =
-                      businesses[index].data() as Map<String, dynamic>;
-                  final logoUrl = business['logo'] as String?;
+                  final business = businesses[index];
+                  final businessName = business['name'];
+                  final businessId = business['id'];
+                  final logoUrl =
+                      business['logo'] as String?; // Cast logo to String?
                   final isDarkMode = Get.isDarkMode;
-                  final defaultImage = Image.asset(
-                    isDarkMode
-                        ? 'assets/images/moon_negro.png'
-                        : 'assets/images/moon_blanco.png',
-                    width: 60,
-                    height: 60,
-                    fit: BoxFit.cover,
-                  ).image;
+
+                  // Use a placeholder for the 'Todos' option or if logoUrl is null/empty
+                  final ImageProvider backgroundImage;
+                  if (businessId == 'Todos' ||
+                      logoUrl == null ||
+                      logoUrl.isEmpty) {
+                    backgroundImage = Image.asset(
+                      isDarkMode
+                          ? 'assets/images/moon_negro.png'
+                          : 'assets/images/moon_blanco.png',
+                      width: 60,
+                      height: 60,
+                      fit: BoxFit.cover,
+                    ).image;
+                  } else {
+                    backgroundImage = CachedNetworkImageProvider(logoUrl);
+                  }
 
                   return GestureDetector(
                     onTap: () {
                       setState(() {
-                        _selectedBusiness = businesses[index].id;
+                        if (businessId == 'Todos') {
+                          _selectedBusiness = 'Todos';
+                          _selectedCategoryId =
+                              'Todos'; // Reset category filter
+                        } else {
+                          _selectedBusiness =
+                              businessId as String; // Cast to String
+                          _selectedCategoryId =
+                              'Todos'; // Reset category filter
+                        }
+                        print('Negocio seleccionado: $_selectedBusiness');
                       });
                     },
                     child: Container(
@@ -411,10 +481,7 @@ class _StoreScreenState extends State<StoreScreen> {
                         children: [
                           CircleAvatar(
                             radius: 30,
-                            backgroundImage:
-                                logoUrl != null && logoUrl.isNotEmpty
-                                    ? CachedNetworkImageProvider(logoUrl)
-                                    : defaultImage,
+                            backgroundImage: backgroundImage,
                             onBackgroundImageError: (exception, stackTrace) =>
                                 print('Error loading image: $exception'),
                           )
@@ -467,38 +534,15 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 
   Future<void> _loadInitialProducts() async {
-    try {
-      // Lógica para cargar los productos iniciales
-      await _getFilteredProducts().first.then((snapshot) {
-        try {
-          setState(() {
-            _displayedProducts = snapshot.docs;
-          });
-        } catch (e) {
-          print("Error en el setState de _loadInitialProducts: $e");
-          // Maneja el error al actualizar el estado, por ejemplo,
-          // si el widget ya no está en el árbol.
-        }
-      }).catchError((error) {
-        print("Error al obtener el primer snapshot de productos: $error");
-        // Maneja el error al obtener el stream o el primer valor del stream.
-        // Podrías establecer un estado de error o intentar recargar los datos.
-      });
-    } catch (e) {
-      print("Error general en _loadInitialProducts: $e");
-      // Captura cualquier error síncrono que pueda ocurrir.
-    }
+    // This function is no longer actively used for initial display
+    // as initial load is handled by the stream in ProductListSection
+    // based on _getProductQuery
   }
 
   Stream<QuerySnapshot> _getFilteredProducts() {
-    if (_selectedCategory == 'Todos') {
-      return FirebaseFirestore.instance.collection('productos').snapshots();
-    } else {
-      return FirebaseFirestore.instance
-          .collection('productos')
-          .where('categoria', isEqualTo: _selectedCategory)
-          .snapshots();
-    }
+    // This function is no longer needed as _getProductQuery handles filtering
+    // and ProductListSection uses that directly.
+    throw UnimplementedError('This method is no longer used');
   }
 
   Future<void> _searchProducts(String query) async {
@@ -510,22 +554,19 @@ class _StoreScreenState extends State<StoreScreen> {
           _recentSearches.removeAt(0);
         }
       }
-      _displayedProducts = [];
+      // _displayedProducts = []; // No longer directly manipulate _displayedProducts here
     });
 
-    if (query.isNotEmpty) {
-      FirebaseFirestore.instance
-          .collection('productos')
-          .where('searchKeywords', arrayContains: query.toLowerCase())
-          .get()
-          .then((snapshot) {
-        setState(() {
-          _displayedProducts = snapshot.docs;
-        });
-      });
-    } else {
-      _loadInitialProducts();
-    }
+    // The search logic now needs to trigger a reload in ProductListSection
+    // This might require changing how ProductListSection gets its data,
+    // potentially passing the search query down or having ProductListSection
+    // listen to changes in _lastSearchQuery.
+    // For now, we'll leave this as is, but it might not fully integrate
+    // with the streamed list without further changes.
+
+    // If you want search to filter the stream, you'd need to modify _getProductQuery
+    // to include the search term, which can be complex with Firestore text search.
+    // A separate search delegate (ProductSearchDelegate) is already used for a dedicated search screen.
   }
 
   Future<void> _loadSimilarProducts(DocumentSnapshot product) async {
@@ -545,37 +586,41 @@ class _StoreScreenState extends State<StoreScreen> {
     query = query.limit(10);
 
     query.get().then((snapshot) {
+      // This part might need adjustment if you want similar products
+      // to replace or augment the main product list
       setState(() {
-        _displayedProducts = snapshot.docs;
+        _displayedProducts = snapshot.docs; // This still updates the old list
       });
     });
   }
 
   void _loadProducts() async {
-    final query = _getProductQuery();
-    final result = await query.get();
-
-    setState(() {
-      _products = result.docs.map((doc) => Product.fromFirestore(doc)).toList();
-      _lastDocument = result.docs.last;
-    });
+    // This is the old load method, likely not used anymore with ProductListSection stream
+    // final query = _getProductQuery();
+    // final result = await query.get();
+    //
+    // setState(() {
+    //   _products = result.docs.map((doc) => Product.fromFirestore(doc)).toList();
+    //   _lastDocument = result.docs.last;
+    // });
   }
 
   void _loadMoreProducts() async {
-    try {
-      final query =
-          _getProductQuery(isLoadingMore: true, lastDocument: _lastDocument);
-      final result = await query.get();
-
-      setState(() {
-        _products.addAll(result.docs.map((doc) => Product.fromFirestore(doc)));
-        if (result.docs.isNotEmpty) {
-          _lastDocument = result.docs.last;
-        }
-      });
-    } catch (e) {
-      print('Error: $e');
-    }
+    // This is the old load more method, handled within ProductListSection now
+    // try {
+    //   final query =
+    //       _getProductQuery(isLoadingMore: true, lastDocument: _lastDocument);
+    //   final result = await query.get();
+    //
+    //   setState(() {
+    //     _products.addAll(result.docs.map((doc) => Product.fromFirestore(doc)));
+    //     if (result.docs.isNotEmpty) {
+    //       _lastDocument = result.docs.last;
+    //     }
+    //   });
+    // } catch (e) {
+    //   print('Error: $e');
+    // }
   }
 
   void _showProductDetails(DocumentSnapshot product) {
@@ -588,10 +633,11 @@ class _StoreScreenState extends State<StoreScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark ? Colors.black : Colors.white,
           ),
           child: Column(
             children: [
@@ -605,75 +651,153 @@ class _StoreScreenState extends State<StoreScreen> {
                 ),
               ),
               Expanded(
-                child: ListView.builder(
-                  itemCount: images.length,
-                  itemBuilder: (context, index) {
-                    return Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: ClipRRect(
-                        child: CachedNetworkImage(
-                          imageUrl: images[index],
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              Center(child: CircularProgressIndicator()),
-                          errorWidget: (context, url, error) =>
-                              Icon(Icons.error),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 10,
-                      offset: Offset(0, -5),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: ListView(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(data['nombre'] ?? '',
-                            style: TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.bold)),
-                        Text(
-                            '\$${data['precio']?.toStringAsFixed(2) ?? '0.00'}',
-                            style: TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                    // Product Images
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: NeverScrollableScrollPhysics(),
+                      itemCount: images.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: ClipRRect(
+                            child: CachedNetworkImage(
+                              imageUrl: images[index],
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) =>
+                                  Center(child: CircularProgressIndicator()),
+                              errorWidget: (context, url, error) =>
+                                  Icon(Icons.error),
+                            ),
                           ),
-                        ),
-                        onPressed: () {
-                          _addToCart(data);
-                          Navigator.pop(context);
-                          _loadSimilarProducts(
-                              product); // Cargar similares al cerrar
-                        },
-                        child: Text('AGREGAR AL CARRITO',
+                        );
+                      },
+                    ),
+                    // Product Details
+                    Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.black : Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 10,
+                            offset: Offset(0, -5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  data['nombre'] ?? '',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text(
+                                '\$${data['precio']?.toStringAsFixed(2) ?? '0.00'}',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 20),
+                          // Variants Section
+                          Text(
+                            'Variantes',
                             style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white)),
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black,
+                            ),
+                          ),
+                          SizedBox(height: 12),
+                          Container(
+                            height: 120,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: 5, // Placeholder count
+                              itemBuilder: (context, index) {
+                                return Container(
+                                  width: 100,
+                                  margin: EdgeInsets.only(right: 12),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? Colors.grey[900]
+                                        : Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.image,
+                                      color: isDark
+                                          ? Colors.grey[700]
+                                          : Colors.grey[400],
+                                      size: 32,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF000000),
+                                foregroundColor:
+                                    isDark ? Colors.white : Colors.white,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                textStyle: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                                elevation: isDark ? 4 : 2,
+                                shadowColor: isDark
+                                    ? Colors.white.withOpacity(0.3)
+                                    : Colors.black.withOpacity(0.2),
+                              ),
+                              onPressed: () {
+                                // Create a new map that includes the document ID as 'id'
+                                final productDataWithId = {
+                                  ...data,
+                                  'id': product
+                                      .id, // Use the Firestore document ID as the product ID
+                                };
+                                print(
+                                    'StoreScreen: Adding product to cart: $productDataWithId'); // Debug print
+                                cartController.addToCart(
+                                    productDataWithId); // Pass the map with the correct ID
+                                Navigator.pop(context);
+                                _loadSimilarProducts(product);
+                              },
+                              child: Text('AGREGAR AL CARRITO',
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -684,74 +808,15 @@ class _StoreScreenState extends State<StoreScreen> {
         );
       },
     ).then((_) {
-      // Este bloque se ejecuta cuando el BottomSheet se cierra
-      if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
-        _searchProducts(_lastSearchQuery!); // Recargar la última búsqueda
-      } else {
-        _loadInitialProducts(); // Si no hay búsqueda reciente, volver a cargar los iniciales
-      }
+      // Decide how to refresh the product list after closing details
+      // For now, we'll rely on the ProductListSection's didUpdateWidget if filters change
+      // or its own loading logic.
+      // if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
+      //   _searchProducts(_lastSearchQuery!);
+      // } else {
+      //   _loadInitialProducts();
+      // }
     });
-  }
-
-  Widget _buildProductImage(Map<String, dynamic> productData) {
-    final isDarkMode = Get.isDarkMode;
-    final storeImgs = productData['storeImgs'] as List<dynamic>?;
-    final String? imageUrl = productData['imageUrl'];
-    final defaultImage = isDarkMode
-        ? 'assets/images/moon_negro.png'
-        : 'assets/images/moon_blanco.png';
-
-    Widget imageWidget;
-
-    if (imageUrl?.isNotEmpty == true) {
-      imageWidget = CachedNetworkImage(
-        imageUrl: imageUrl!,
-        fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
-        placeholder: (context, url) =>
-            Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => Icon(Icons.error),
-      );
-    } else if (storeImgs != null &&
-        storeImgs.isNotEmpty &&
-        storeImgs[0]?.isNotEmpty == true) {
-      imageWidget = CachedNetworkImage(
-        imageUrl: storeImgs[0],
-        fit: BoxFit.fill, // Usar BoxFit.fill para estirar la imagen
-        placeholder: (context, url) =>
-            Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => Icon(Icons.error),
-      );
-    } else {
-      imageWidget = Image.asset(
-        defaultImage,
-        fit: BoxFit
-            .fill, // Usar BoxFit.fill para estirar la imagen de relleno también
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-      child: SizedBox(
-        width: double.infinity,
-        child: imageWidget,
-      ),
-    );
-  }
-
-  Widget _buildThemeAwarePlaceholder(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final placeholderImage = isDarkMode
-        ? 'assets/images/moon_solo_blanco.png'
-        : 'assets/images/moon_solo_negro.png';
-
-    return Center(
-      child: Image.asset(
-        placeholderImage,
-        width: 100,
-        height: 100,
-        fit: BoxFit.contain,
-      ),
-    );
   }
 
   void _logout(BuildContext context) async {
@@ -791,21 +856,6 @@ class _StoreScreenState extends State<StoreScreen> {
     );
   }
 
-  void _addToCart(Map<String, dynamic> product) {
-    setState(() {
-      // Asegurarnos de que tenemos todos los datos necesarios
-      final cartItem = {
-        'id': product['id'] ?? '',
-        'nombre': product['nombre'] ?? 'Producto sin nombre',
-        'precio': product['precio'] ?? 0.0,
-        'imagen': product['imagen'] ?? '',
-        'cantidad': 1, // Agregamos cantidad por defecto
-      };
-      _cartItems.add(cartItem);
-      _showCartButton = true;
-    });
-  }
-
   void _showOrderSummary() {
     showModalBottomSheet(
       context: context,
@@ -814,155 +864,12 @@ class _StoreScreenState extends State<StoreScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Container(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Text(
-                'Resumen de la Orden',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 20),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _cartItems.length,
-                  itemBuilder: (context, index) {
-                    final item = _cartItems[index];
-                    return ListTile(
-                      leading:
-                          item['imagen'] != null && item['imagen'].isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: item['imagen'],
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                  errorWidget: (context, url, error) =>
-                                      Icon(Icons.image, size: 50),
-                                )
-                              : Icon(Icons.image, size: 50),
-                      title: Text(item['nombre'] ?? 'Producto'),
-                      subtitle: Text(
-                          '\$${item['precio']?.toStringAsFixed(2) ?? '0.00'}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.remove_circle_outline),
-                            onPressed: () {
-                              setState(() {
-                                if (item['cantidad'] > 1) {
-                                  item['cantidad']--;
-                                } else {
-                                  _cartItems.removeAt(index);
-                                  if (_cartItems.isEmpty) {
-                                    _showCartButton = false;
-                                  }
-                                }
-                              });
-                              Navigator.pop(context);
-                              _showOrderSummary();
-                            },
-                          ),
-                          Text('${item['cantidad']}'),
-                          IconButton(
-                            icon: Icon(Icons.add_circle_outline),
-                            onPressed: () {
-                              setState(() {
-                                item['cantidad']++;
-                              });
-                              Navigator.pop(context);
-                              _showOrderSummary();
-                            },
-                          ),
-                          IconButton(
-                            icon: Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                _cartItems.removeAt(index);
-                                if (_cartItems.isEmpty) {
-                                  _showCartButton = false;
-                                }
-                              });
-                              Navigator.pop(context);
-                              _showOrderSummary();
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Divider(),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Total:',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '\$${_calculateTotal().toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Implementar proceso de pago
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 15),
-                    backgroundColor: Colors.blue,
-                  ),
-                  child: Text(
-                    'Proceder al Pago',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        return SizedBox(
+          height: MediaQuery.of(context).size.height * 0.75,
+          child: CartBottomSheet(),
         );
       },
     );
-  }
-
-  double _calculateTotal() {
-    return _cartItems.fold(0.0, (sum, item) {
-      return sum + ((item['precio'] ?? 0.0) * (item['cantidad'] ?? 1));
-    });
   }
 
   // Función para cargar los favoritos del usuario
@@ -1066,33 +973,6 @@ class _StoreScreenState extends State<StoreScreen> {
       }
     } catch (e) {
       print('Error al actualizar favoritos: $e');
-    }
-  }
-
-  Future<void> _loadCartItems() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return;
-
-      final cartDoc =
-          await _firestore.collection('userCart').doc(user.uid).get();
-
-      if (cartDoc.exists) {
-        final data = cartDoc.data();
-        if (data != null && data['items'] != null) {
-          setState(() {
-            _cartItems = List<Map<String, dynamic>>.from(data['items']);
-            _showCartButton = _cartItems.isNotEmpty;
-          });
-        }
-      } else {
-        setState(() {
-          _cartItems = [];
-          _showCartButton = false;
-        });
-      }
-    } catch (e) {
-      print('Error al cargar el carrito: $e');
     }
   }
 }
@@ -1207,13 +1087,15 @@ class Debouncer {
 }
 
 class ProductListSection extends StatefulWidget {
-  final String? selectedCategory;
+  final String? selectedCategoryId;
+  final String? selectedBusiness;
   final Function(DocumentSnapshot) showProductDetails;
   final Query<Map<String, dynamic>> Function()? getProductQuery;
 
   const ProductListSection({
     Key? key,
-    this.selectedCategory,
+    this.selectedCategoryId,
+    this.selectedBusiness,
     required this.showProductDetails,
     this.getProductQuery,
   }) : super(key: key);
@@ -1250,12 +1132,16 @@ class _ProductListSectionState extends State<ProductListSection> {
   @override
   void didUpdateWidget(covariant ProductListSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.selectedCategory != oldWidget.selectedCategory) {
+    if (widget.selectedCategoryId != oldWidget.selectedCategoryId ||
+        widget.selectedBusiness != oldWidget.selectedBusiness) {
       print(
-          'Categoría cambió de ${oldWidget.selectedCategory} a ${widget.selectedCategory}');
+          'Filtro cambiado: Categoría de ${oldWidget.selectedCategoryId} a ${widget.selectedCategoryId}, Negocio de ${oldWidget.selectedBusiness} a ${widget.selectedBusiness}');
       _products.clear();
       _lastDocument = null;
       _hasMore = true;
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+      }
       _loadMoreProducts();
     }
   }
@@ -1287,22 +1173,13 @@ class _ProductListSectionState extends State<ProductListSection> {
     Query<Map<String, dynamic>> paginatedQuery = baseQuery.limit(_limit);
 
     if (_lastDocument != null && _products.isNotEmpty) {
-      // Añadimos una verificación si _products no está vacío
       paginatedQuery = paginatedQuery.startAfterDocument(_lastDocument!);
     }
 
     try {
       final QuerySnapshot<Map<String, dynamic>> snapshot =
           await paginatedQuery.get();
-      List<DocumentSnapshot> newProducts = [];
-      for (var doc in snapshot.docs) {
-        if (doc.data().containsKey('categoriaId') ||
-            widget.selectedCategory == 'Todos') {
-          newProducts.add(doc);
-        } else {
-          print('Producto omitido (sin categoriaId): ${doc.id}');
-        }
-      }
+      List<DocumentSnapshot> newProducts = snapshot.docs;
 
       if (newProducts.isNotEmpty) {
         _lastDocument = newProducts.last;
@@ -1312,65 +1189,12 @@ class _ProductListSectionState extends State<ProductListSection> {
       }
     } catch (e) {
       print('Error al cargar productos: $e');
-      // Manejar el error aquí
       _hasMore = false; // Importante para detener intentos de carga
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
-  }
-
-  Widget _buildProductImage(Map<String, dynamic> productData) {
-    final isDarkMode = Get.isDarkMode;
-    final storeImgs = productData['storeImgs'] as List<dynamic>?;
-    final String? imageUrl = productData['imageUrl'];
-    final defaultImage = isDarkMode
-        ? 'assets/images/moon_negro.png'
-        : 'assets/images/moon_blanco.png';
-
-    Widget imageWidget;
-
-    if (imageUrl?.isNotEmpty == true) {
-      imageWidget = CachedNetworkImage(
-        imageUrl: imageUrl!,
-        fit: BoxFit.cover,
-        placeholder: (context, url) =>
-            Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => Icon(Icons.error),
-      );
-    } else if (storeImgs != null &&
-        storeImgs.isNotEmpty &&
-        storeImgs[0]?.isNotEmpty == true) {
-      imageWidget = CachedNetworkImage(
-        imageUrl: storeImgs[0],
-        fit: BoxFit.cover,
-        placeholder: (context, url) =>
-            Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) => Icon(Icons.error),
-      );
-    } else {
-      imageWidget = Image.asset(
-        defaultImage,
-        fit: BoxFit.fill,
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-      child: imageWidget,
-    );
-  }
-
-  Widget _buildThemeAwarePlaceholder(BuildContext context) {
-    final isDarkMode = Get.isDarkMode;
-    final defaultImage = isDarkMode
-        ? 'assets/images/moon_negro.png'
-        : 'assets/images/moon_blanco.png';
-    return Image.asset(
-      defaultImage,
-      fit: BoxFit.contain,
-    );
   }
 
   @override
@@ -1380,85 +1204,98 @@ class _ProductListSectionState extends State<ProductListSection> {
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 0.68,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.55,
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             if (index < _products.length) {
               final product = _products[index];
               final productData = product.data() as Map<String, dynamic>;
-              final List<dynamic> storeImgs = productData['storeImgs'] ?? [];
-              final hasImages = (productData['imagen']?.isNotEmpty == true) ||
-                  storeImgs.isNotEmpty;
 
               return GestureDetector(
                 onTap: () => widget.showProductDetails(product),
                 child: Card(
-                  elevation: 2,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
+                        flex: 6,
                         child: Container(
+                          width: double.infinity,
                           decoration: BoxDecoration(
-                            color: Theme.of(context).cardColor,
+                            color: Get.isDarkMode ? Colors.black : Colors.white,
+                            borderRadius:
+                                BorderRadius.vertical(top: Radius.circular(12)),
                           ),
-                          child: hasImages
-                              ? _buildProductImage(productData)
-                              : _buildThemeAwarePlaceholder(context),
+                          child: ProductImageWidget(productData: productData),
                         ),
                       ),
-                      Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    productData['nombre'] ?? 'Sin nombre',
+                      Container(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.black
+                            : Colors.white,
+                        child: Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                productData['nombre'] ?? 'Sin nombre',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white
+                                      : Colors.black,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
                                     style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : Colors.green,
+                                      fontSize: 14,
+                                    ),
                                   ),
-                                ),
-                                IconButton(
-                                  icon: Icon(
-                                    _favorites[product.id] == true
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    color: _favorites[product.id] == true
-                                        ? Colors.red
-                                        : Colors.grey,
-                                    size: 20,
+                                  IconButton(
+                                    padding: EdgeInsets.zero,
+                                    constraints: BoxConstraints(),
+                                    icon: Icon(
+                                      _favorites[product.id] == true
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      color: _favorites[product.id] == true
+                                          ? Colors.red
+                                          : (Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? Colors.white
+                                              : Colors.grey),
+                                      size: 18,
+                                    ),
+                                    onPressed: () => _toggleFavorite(
+                                        product.id, productData),
                                   ),
-                                  onPressed: () =>
-                                      _toggleFavorite(product.id, productData),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              '\$${productData['precio']?.toStringAsFixed(2) ?? '0.00'}',
-                              style:
-                                  TextStyle(color: Colors.green, fontSize: 15),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Disponibles: ${productData['cantidad'] ?? 0}',
-                              style: TextStyle(
-                                  color: productData['cantidad'] > 0
-                                      ? Colors.black54
-                                      : Colors.red,
-                                  fontSize: 14),
-                            ),
-                          ],
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -1535,6 +1372,7 @@ class _ProductListSectionState extends State<ProductListSection> {
     }
   }
 
+  // Función para cargar los favoritos del usuario
   Future<void> _loadFavorites() async {
     try {
       final user = _auth.currentUser;
@@ -1586,37 +1424,58 @@ class _SearchBarDelegate extends SliverPersistentHeaderDelegate {
   _SearchBarDelegate({required this.onSearchTap});
 
   @override
-  double get maxExtent => 44.0; // Altura del buscador
+  double get maxExtent => 60.0;
 
   @override
-  double get minExtent => 44.0; // Altura del buscador cuando está pegado
+  double get minExtent => 60.0;
 
   @override
-  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => false;
+  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) => true;
 
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onSearchTap,
       child: Container(
-        color: Colors.white, // Color de fondo del buscador
-        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        color: isDarkMode ? Colors.black : Colors.white,
+        padding: EdgeInsets.symmetric(horizontal: 15, vertical: 15),
         child: Container(
+          height: 45,
           decoration: BoxDecoration(
-            color: Colors.grey.shade200,
+            color: isDarkMode ? Colors.black : Colors.white,
             borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: isDarkMode
+                    ? Colors.white.withOpacity(0.5)
+                    : Colors.black.withOpacity(0.1),
+                blurRadius: 4.0,
+                spreadRadius: 1.0,
+                offset: Offset(0, 0),
+              ),
+            ],
           ),
           child: Row(
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                child: Icon(Icons.search, color: Colors.grey),
+                child: Icon(Icons.search,
+                    color: isDarkMode ? Colors.white : Colors.grey, size: 24),
               ),
-              Text(
-                'Buscar productos...',
-                style: TextStyle(color: Colors.grey),
-              ),
+              if (!isDarkMode)
+                Expanded(
+                  child: Text(
+                    'Buscar productos...',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 16,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
             ],
           ),
         ),

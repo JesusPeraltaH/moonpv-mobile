@@ -6,6 +6,9 @@ import 'package:get/get_core/src/get_main.dart';
 import 'package:moonpv/inventory/main_drawer.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:moonpv/widgets/drawer_store_screen.dart';
+import 'package:moonpv/screens/favorites_screen.dart';
+import 'package:moonpv/screens/store_screen.dart';
 
 class UserSettingsScreen extends StatefulWidget {
   @override
@@ -20,8 +23,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   String _nombre = 'Usuario';
   String _email = '';
   String _rol = 'Cliente';
-  List<Map<String, dynamic>> _cartItems = [];
-  bool _showCartButton = false;
 
   @override
   void initState() {
@@ -107,133 +108,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  void _addToCart(Map<String, dynamic> product) {
-    setState(() {
-      _cartItems.add(product);
-      _showCartButton = true;
-    });
-  }
-
-  void _showOrderSummary() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Text(
-                'Resumen de la Orden',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 20),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _cartItems.length,
-                  itemBuilder: (context, index) {
-                    final item = _cartItems[index];
-                    return ListTile(
-                      leading: item['imageUrl'] != null
-                          ? Image.network(
-                              item['imageUrl'],
-                              width: 50,
-                              height: 50,
-                              fit: BoxFit.cover,
-                            )
-                          : Icon(Icons.image, size: 50),
-                      title: Text(item['name'] ?? 'Producto'),
-                      subtitle: Text(
-                          '\$${item['price']?.toStringAsFixed(2) ?? '0.00'}'),
-                      trailing: IconButton(
-                        icon: Icon(Icons.delete, color: Colors.red),
-                        onPressed: () {
-                          setState(() {
-                            _cartItems.removeAt(index);
-                            if (_cartItems.isEmpty) {
-                              _showCartButton = false;
-                            }
-                          });
-                          Navigator.pop(context);
-                          _showOrderSummary();
-                        },
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Divider(),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Total:',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '\$${_calculateTotal().toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // TODO: Implementar proceso de pago
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 15),
-                    backgroundColor: Colors.blue,
-                  ),
-                  child: Text(
-                    'Proceder al Pago',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  double _calculateTotal() {
-    return _cartItems.fold(0.0, (sum, item) {
-      return sum + (item['price'] ?? 0.0);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -245,94 +119,38 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         appBar: AppBar(
           title: Text('Mi Cuenta'),
         ),
-        drawer: MainDrawer(
-          logoutCallback: (context) {
-            print('Cerrando sesión desde UserSettingsScreen');
+        drawer: DrawerStoreScreen(
+          isDark: isDark,
+          onPedidosTap: () {/* TODO: Implement Pedidos navigation */},
+          onFavoritesTap: () async {
+            Get.back();
+            Get.to(() => FavoritesScreen());
           },
+          onSettingsTap: () {/* Already on settings screen */},
+          onLogoutTap: () => _logout(context),
         ),
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
+      backgroundColor: isDarkMode ? Colors.black : Colors.white,
       appBar: AppBar(
         title: Text('Mi Cuenta'),
+        iconTheme: IconThemeData(color: iconColor),
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: isDark ? Colors.black : Colors.grey.shade200,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Image.asset(
-                      isDark
-                          ? 'assets/images/moon_blanco.png'
-                          : 'assets/images/moon_negro.png',
-                      height: 50,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'MoonConcept',
-                    style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: Icon(Icons.receipt_long),
-              title: Text('Pedidos'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navegar a pedidos
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.favorite),
-              title: Text('Favoritos'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navegar a favoritos
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.settings),
-              title: Text('Configuración'),
-              onTap: () {
-                Get.to(UserSettingsScreen());
-                // TODO: Navegar a favoritos
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.logout),
-              title: Text('Cerrar sesión'),
-              onTap: () => _logout(context),
-            ),
-          ],
-        ),
+      drawer: DrawerStoreScreen(
+        isDark: isDark,
+        onPedidosTap: () {/* TODO: Implement Pedidos navigation */},
+        onFavoritesTap: () async {
+          Get.back();
+          Get.to(() => FavoritesScreen());
+        },
+        onSettingsTap: () {/* Already on settings screen */},
+        onLogoutTap: () => _logout(context),
       ),
-      floatingActionButton: _showCartButton
-          ? FloatingActionButton.extended(
-              onPressed: _showOrderSummary,
-              backgroundColor: Colors.blue,
-              icon: Icon(Icons.shopping_cart, color: Colors.white),
-              label: Text(
-                '${_cartItems.length} ${_cartItems.length == 1 ? 'item' : 'items'}',
-                style: TextStyle(color: Colors.white),
-              ),
-            )
-          : null,
       body: ListView(
+        padding: const EdgeInsets.all(24.0),
         children: [
           Container(
             padding: EdgeInsets.all(20),
@@ -399,27 +217,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                       // TODO: Implementar gestión de direcciones
                     },
                   ),
-                  ListTile(
-                    leading: Icon(Icons.privacy_tip, color: iconColor),
-                    title: Text('Privacidad y Seguridad'),
-                    onTap: () {
-                      // TODO: Implementar configuración de privacidad
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.help_outline, color: iconColor),
-                    title: Text('Preguntas Frecuentes'),
-                    onTap: () {
-                      // TODO: Implementar FAQ
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(Icons.notifications, color: iconColor),
-                    title: Text('Notificaciones'),
-                    onTap: () {
-                      // TODO: Implementar configuración de notificaciones
-                    },
-                  ),
+
+                  // ListTile(
+                  //   leading: Icon(Icons.notifications, color: iconColor),
+                  //   title: Text('Notificaciones'),
+                  //   onTap: () {
+                  //     // TODO: Implementar configuración de notificaciones
+                  //   },
+                  // ),
                   ListTile(
                     leading: Icon(Icons.payment, color: iconColor),
                     title: Text('Métodos de Pago'),
@@ -432,6 +237,20 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                     title: Text('Historial de Compras'),
                     onTap: () {
                       // TODO: Implementar historial de compras
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.privacy_tip, color: iconColor),
+                    title: Text('Privacidad y Seguridad'),
+                    onTap: () {
+                      // TODO: Implementar configuración de privacidad
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.help_outline, color: iconColor),
+                    title: Text('Preguntas Frecuentes'),
+                    onTap: () {
+                      // TODO: Implementar FAQ
                     },
                   ),
                 ],

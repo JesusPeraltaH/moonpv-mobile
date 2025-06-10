@@ -508,6 +508,24 @@ class _ConteoNegociosScreenState extends State<ConteoNegociosScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Selección de Negocios"),
+        flexibleSpace: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+              ),
+              child: Center(
+                child: Image.asset(
+                  isDark
+                      ? 'assets/images/moon_solo_blanco.png'
+                      : 'assets/images/moon_solo_negro.png',
+                  height: 40,
+                ),
+              ),
+            );
+          },
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(

@@ -12,6 +12,7 @@ import 'package:moonpv/screens/store_screen.dart'; // Pantalla de Usuario Normal
 import 'package:moonpv/services/app_images.dart';
 import 'package:moonpv/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Servicio de autenticación con Google
+import 'package:moonpv/widgets/phone_login_bottom_sheet.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -19,14 +20,13 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  bool _obscurePassword = true;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  bool _isLoading = false; // Estado de carga
-  bool _obscurePassword = true; // Control de visibilidad de la contraseña
 
   void _showCreateAccountBottomSheet(BuildContext context) {
     Get.bottomSheet(
@@ -47,155 +47,268 @@ class _LoginScreenState extends State<LoginScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark
+          ? Colors.black
+          : null, // Fondo negro en oscuro, por defecto (blanco) en claro
       body: Stack(
         children: [
           // Contenido principal centrado
           Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset(
-                    isDark
-                        ? 'assets/images/moon_blanco.png'
-                        : 'assets/images/moon_negro.png',
-                    height: 200,
-                  ),
-                  const SizedBox(height: 32),
-                  TextField(
-                    controller: _emailController,
-                    decoration: InputDecoration(
-                      labelText: "Correo",
-                      prefixIcon: Icon(Icons.email, color: iconColor),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _passwordController,
-                    decoration: InputDecoration(
-                      labelText: "Contraseña",
-                      prefixIcon: Icon(Icons.lock, color: iconColor),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility
-                              : Icons.visibility_off,
-                          color: iconColor,
-                        ),
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
-                      ),
-                    ),
-                    obscureText: _obscurePassword,
-                    style: TextStyle(color: iconColor),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextButton(
-                        onPressed: () => _showCreateAccountBottomSheet(context),
-                        child: Text(
-                          "Olvidé mi contraseña",
-                          style:
-                              TextStyle(color: Theme.of(context).primaryColor),
+                      Image.asset(
+                        isDark
+                            ? 'assets/images/moon_blanco.png'
+                            : 'assets/images/moon_negro.png',
+                        height: 200,
+                      ),
+                      const SizedBox(height: 32),
+                      // Email TextField
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.black
+                              : Colors
+                                  .white, // Fondo del contenedor según el tema
+                          borderRadius: BorderRadius.circular(
+                              8), // Radio similar al buscador
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.5)
+                                  : Colors.black
+                                      .withOpacity(0.1), // Sombra según el tema
+                              blurRadius: 4.0,
+                              spreadRadius: 1.0,
+                              offset: Offset(0, 0),
+                            ),
+                          ],
+                        ),
+                        child: TextFormField(
+                          controller: _emailController,
+                          decoration: InputDecoration(
+                              prefixIcon: Icon(Icons.email, color: iconColor),
+                              filled: true,
+                              fillColor: Colors.transparent,
+                              border: InputBorder.none,
+                              labelText: "Correo",
+                              labelStyle: TextStyle(color: iconColor)),
+                          style: TextStyle(color: iconColor),
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa tu correo electrónico';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // Password TextField
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.black
+                              : Colors
+                                  .white, // Fondo del contenedor según el tema
+                          borderRadius: BorderRadius.circular(
+                              8), // Radio similar al buscador
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark
+                                  ? Colors.white.withOpacity(0.5)
+                                  : Colors.black
+                                      .withOpacity(0.1), // Sombra según el tema
+                              blurRadius: 4.0,
+                              spreadRadius: 1.0,
+                              offset: Offset(0, 0),
+                            ),
+                          ],
+                        ),
+                        child: TextFormField(
+                          controller: _passwordController,
+                          decoration: InputDecoration(
+                              prefixIcon: Icon(Icons.lock, color: iconColor),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                  color: iconColor,
+                                ),
+                                onPressed: () {
+                                  setState(() =>
+                                      _obscurePassword = !_obscurePassword);
+                                },
+                              ),
+                              filled: true,
+                              fillColor: Colors.transparent,
+                              border: InputBorder.none,
+                              labelText: "Contraseña",
+                              labelStyle: TextStyle(color: iconColor)),
+                          obscureText: _obscurePassword,
+                          style: TextStyle(color: iconColor),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Por favor ingresa tu contraseña';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () =>
+                                _showCreateAccountBottomSheet(context),
+                            child: Text(
+                              "Olvidé mi contraseña",
+                              style: TextStyle(
+                                  color: Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey[400]
+                                      : Theme.of(context).primaryColor),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () async {
+                                  if (_formKey.currentState!.validate()) {
+                                    setState(() => _isLoading = true);
+                                    await _login(context);
+                                    setState(() => _isLoading = false);
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF000000),
+                              foregroundColor:
+                                  isDark ? Colors.white : Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              textStyle:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                              elevation: isDark ? 4 : 2,
+                              shadowColor: isDark
+                                  ? Colors.white.withOpacity(0.3)
+                                  : Colors.black.withOpacity(0.2)),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white)
+                              : const Text("Iniciar Sesión"),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Botón para iniciar sesión con teléfono
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.transparent,
+                              builder: (context) => PhoneLoginBottomSheet(),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor:
+                                isDark ? Colors.white : Colors.black,
+                            foregroundColor:
+                                isDark ? Colors.black : Colors.white,
+                          ),
+                          child: Text('INICIAR SESIÓN CON TELÉFONO'),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () async {
+                                  try {
+                                    setState(() => _isLoading = true);
+
+                                    await _loginWithGoogle();
+
+                                    // El éxito se maneja dentro de _loginWithGoogle con Get.off()
+                                    // No necesitamos más lógica aquí
+                                  } on FirebaseAuthException catch (e) {
+                                    setState(() => _isLoading = false);
+
+                                    // Mostrar error específico (ya traducido desde auth_service)
+                                    Get.snackbar(
+                                      'Error',
+                                      e.message ?? 'Error al iniciar sesión',
+                                      snackPosition: SnackPosition.TOP,
+                                      backgroundColor: Colors.red[600],
+                                      colorText: Colors.white,
+                                      duration: Duration(seconds: 4),
+                                    );
+                                  } catch (e) {
+                                    setState(() => _isLoading = false);
+
+                                    // Error genérico
+                                    Get.snackbar(
+                                      'Error',
+                                      'Ocurrió un error inesperado',
+                                      snackPosition: SnackPosition.TOP,
+                                      backgroundColor: Colors.red[600],
+                                      colorText: Colors.white,
+                                      duration: Duration(seconds: 4),
+                                    );
+
+                                    // Registrar error completo en consola
+                                    debugPrint('Error en login Google: $e');
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                isDark ? Colors.grey[900] : Colors.white,
+                            foregroundColor:
+                                isDark ? Colors.white : Colors.black,
+                            shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.zero),
+                          ),
+                          child: _isLoading
+                              ? const CircularProgressIndicator()
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Image.asset(
+                                      AppImages.google,
+                                      height: 24,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Text("Iniciar sesión con Google"),
+                                  ],
+                                ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () async {
-                              setState(() => _isLoading = true);
-                              await _login(context);
-                              setState(() => _isLoading = false);
-                            },
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text("Iniciar Sesión"),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      // onPressed: _isLoading ? null : () async {
-                      //   setState(() => _isLoading = true);
-                      //   await _loginWithGoogle();
-                      //   setState(() => _isLoading = false);
-                      // },
-                      onPressed: _isLoading
-                          ? null
-                          : () async {
-                              try {
-                                setState(() => _isLoading = true);
-
-                                await _loginWithGoogle();
-
-                                // El éxito se maneja dentro de _loginWithGoogle con Get.off()
-                                // No necesitamos más lógica aquí
-                              } on FirebaseAuthException catch (e) {
-                                setState(() => _isLoading = false);
-
-                                // Mostrar error específico (ya traducido desde auth_service)
-                                Get.snackbar(
-                                  'Error',
-                                  e.message ?? 'Error al iniciar sesión',
-                                  snackPosition: SnackPosition.TOP,
-                                  backgroundColor: Colors.red[600],
-                                  colorText: Colors.white,
-                                  duration: Duration(seconds: 4),
-                                );
-                              } catch (e) {
-                                setState(() => _isLoading = false);
-
-                                // Error genérico
-                                Get.snackbar(
-                                  'Error',
-                                  'Ocurrió un error inesperado',
-                                  snackPosition: SnackPosition.TOP,
-                                  backgroundColor: Colors.red[600],
-                                  colorText: Colors.white,
-                                  duration: Duration(seconds: 4),
-                                );
-
-                                // Registrar error completo en consola
-                                debugPrint('Error en login Google: $e');
-                              }
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.zero),
-                      ),
-                      child: _isLoading
-                          ? const CircularProgressIndicator()
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Image.asset(
-                                  AppImages.google,
-                                  height: 24,
-                                ),
-                                const SizedBox(width: 10),
-                                const Text("Iniciar sesión con Google"),
-                              ],
-                            ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-
           // Sección "Aún no tienes cuenta" fija en la parte inferior
           Positioned(
             bottom: 20,
@@ -210,7 +323,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: () => _showCreateAccountBottomSheet(context),
                   child: Text(
                     "Crear cuenta",
-                    style: TextStyle(color: Theme.of(context).primaryColor),
+                    style: TextStyle(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[400]
+                            : Theme.of(context).primaryColor),
                   ),
                 ),
               ],
@@ -235,10 +351,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final UserCredential userCredential = await _auth
           .signInWithEmailAndPassword(email: email, password: password);
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userId', userCredential.user!.uid);
-
       final DocumentSnapshot userDoc = await _firestore
           .collection('users')
           .doc(userCredential.user?.uid)
@@ -250,6 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (userDoc.exists) {
         final String role = userDoc['role'];
+        final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userRole', role);
 
         if (role == "Admin") {
@@ -273,6 +386,8 @@ class _LoginScreenState extends State<LoginScreen> {
         errorMessage = "La contraseña es incorrecta.";
       } else if (e.code == 'invalid-email') {
         errorMessage = "El correo ingresado no es válido.";
+      } else if (e.code == 'channel-error') {
+        errorMessage = "Asegúrate de que todos los campos estén llenos.";
       }
 
       _showSnackbar("Error", errorMessage, Colors.red);
@@ -280,6 +395,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       _showSnackbar("Error", "Error inesperado al iniciar sesión.", Colors.red);
       await _logout();
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -294,21 +411,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Future<void> _loginWithGoogle() async {
-  //   try {
-  //     final credenciales = await AuthService().signInWithGoogle();
-  //     debugPrint(credenciales.user?.displayName);
-  //     debugPrint(credenciales.user?.photoURL);
-  //     debugPrint(credenciales.user?.email);
-
-  //     await Future.delayed(Duration(seconds: 2)); // Simulación de carga visible
-  //     Get.off(() => StoreScreen());
-  //   } catch (e) {
-  //     Get.snackbar("Error", "No se pudo iniciar sesión con Google: $e",
-  //         snackPosition: SnackPosition.BOTTOM);
-  //     await _logout();
-  //   }
-  // }
   Future<void> _loginWithGoogle() async {
     try {
       setState(() => _isLoading = true);
