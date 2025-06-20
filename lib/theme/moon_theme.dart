@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class ZaraTheme {
+class MoonTheme {
   static final ThemeData darkTheme = ThemeData.dark().copyWith(
     scaffoldBackgroundColor: Colors.black, // Fondo gris oscuro para tema oscuro
     colorScheme: const ColorScheme.dark(

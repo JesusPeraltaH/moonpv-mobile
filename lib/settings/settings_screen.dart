@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:moonpv/inventory/main_drawer.dart';
+import 'package:moonpv/point_sale/printer_connection_screen.dart';
 import 'package:moonpv/screens/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -150,7 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: Icon(Icons.print, color: iconColor),
                     title: Text('Conectar Impresora'),
                     onTap: () {
-                      // TODO: Implementar conexión de impresora
+                      Get.to(() => PrinterConnectionScreen());
                     },
                   ),
                   ListTile(

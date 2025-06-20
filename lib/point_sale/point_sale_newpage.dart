@@ -9,11 +9,13 @@ import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/inventory/sales.dart';
 import 'package:moonpv/inventory/salesList.dart';
 import 'package:moonpv/point_sale/barcode_scanner_point_sale.dart';
+import 'package:moonpv/point_sale/widgets/business_products_accordion.dart';
 import 'package:moonpv/screens/add_user_screen.dart';
 import 'package:moonpv/screens/conteo.dart';
 import 'package:moonpv/screens/login_screen.dart';
 import 'package:moonpv/screens/payment_management_screen.dart';
 import 'package:moonpv/settings/settings_screen.dart';
+import 'package:moonpv/services/printing_service.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 //import 'package:blue_thermal_printer/blue_thermal_printer.dart';
@@ -33,6 +35,7 @@ class SalespointNewSalePage extends StatefulWidget {
 class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   bool _mostrarMenuAdmin = false;
   bool _isInitialized = false;
+  bool _showBusinessProducts = false;
   final TextEditingController _codeController = TextEditingController();
   final TextEditingController _quantityController =
       TextEditingController(text: '1');
@@ -50,6 +53,10 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   // BlueThermalPrinter printer = BlueThermalPrinter.instance;
   // List<BluetoothDevice> devices = [];
 
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final TextEditingController _searchController = TextEditingController();
+  double _exchangeRate = 17.50; // Tipo de cambio por defecto
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +66,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     });
     _codeController.text = widget.initialProductCode;
     _getDevices();
+    _loadExchangeRate();
     // Obtener dispositivos Bluetooth al iniciar
   }
 
@@ -81,6 +89,7 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   Future<void> _getDevices() async {
     // devices = await printer.getBondedDevices();
   }
+
   void _logout(BuildContext context) async {
     // Mostrar un diálogo de confirmación
     showDialog(
@@ -129,28 +138,66 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     );
   }
 
-  void _addProductToSale(Map<String, dynamic> product) async {
-    int cantidadAAgregar = int.tryParse(_quantityController.text) ?? 1;
-    int cantidadDisponible = await _obtenerCantidadDisponible(product['code']);
+  void _addProductToSale(Map<String, dynamic> product) {
+    print('Intentando agregar producto: $product'); // Debug
 
-    if (cantidadAAgregar > cantidadDisponible) {
-      _mostrarAlerta(
-          'No hay suficiente inventario disponible. Solo hay $cantidadDisponible unidades disponibles.');
-    } else {
-      setState(() {
-        _saleDetails.add({
-          'cantidad': cantidadAAgregar,
-          'nombre': product['name'] ?? 'Desconocido',
-          'codigo': product['code'] ?? 'Sin código',
-          'precio': (product['price'] as num?)?.toDouble() ?? 0.0,
-          'total': ((product['price'] as num?)?.toDouble() ?? 0.0) *
-              cantidadAAgregar,
-        });
-        _quantityController.text = '1';
-        _codeController.clear();
-        FocusScope.of(context).requestFocus(_codeFocusNode);
-      });
+    // Verificar que el producto tenga stock disponible
+    final availableQuantity = (product['cantidad'] as num?)?.toInt() ?? 0;
+    if (availableQuantity <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${product['nombre'] ?? 'Producto'} está agotado'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
     }
+
+    setState(() {
+      // Buscar si el producto ya existe en la lista
+      final existingProductIndex = _saleDetails
+          .indexWhere((detail) => detail['codigo'] == product['codigo']);
+      print('Índice del producto existente: $existingProductIndex'); // Debug
+
+      if (existingProductIndex != -1) {
+        // Si el producto existe, incrementar la cantidad y recalcular el total
+        print('Producto encontrado, incrementando cantidad'); // Debug
+        final currentQuantity =
+            (_saleDetails[existingProductIndex]['cantidad'] as num?)?.toInt() ??
+                0;
+        final precio = (_saleDetails[existingProductIndex]['precio'] as num?)
+                ?.toDouble() ??
+            0.0;
+        final nuevaCantidad = currentQuantity + 1;
+
+        // Verificar que no exceda la cantidad disponible
+        if (nuevaCantidad > availableQuantity) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'No hay suficiente stock de ${product['nombre'] ?? 'Producto'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        _saleDetails[existingProductIndex]['cantidad'] = nuevaCantidad;
+        _saleDetails[existingProductIndex]['total'] = precio * nuevaCantidad;
+      } else {
+        // Si el producto no existe, agregarlo como nuevo
+        print('Producto no encontrado, agregando nuevo'); // Debug
+        final precio = (product['precio'] as num?)?.toDouble() ?? 0.0;
+        _saleDetails.add({
+          'codigo': product['codigo'] ?? '',
+          'nombre': product['nombre'] ?? '',
+          'precio': precio,
+          'cantidad': 1,
+          'total': precio * 1, // Calcular el total inicial
+        });
+      }
+      print('Lista actualizada: $_saleDetails'); // Debug
+    });
   }
 
   Future<int> _obtenerCantidadDisponible(String productCode) async {
@@ -190,8 +237,10 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     }
 
     // Calcular el gran total de la venta
-    double grandTotal =
-        _saleDetails.fold(0.0, (sum, item) => sum + item['total']);
+    double grandTotal = _saleDetails.fold(0.0, (sum, item) {
+      double total = (item['total'] as num?)?.toDouble() ?? 0.0;
+      return sum + total;
+    });
 
     // Verificar que grandTotal no sea cero
     if (grandTotal == 0.0) {
@@ -366,8 +415,20 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
   }
 
   void _finalizarVenta() {
-    double grandTotal =
-        _saleDetails.fold(0.0, (sum, item) => sum + item['total']);
+    // Asegurar que todos los productos tengan su total calculado
+    for (var item in _saleDetails) {
+      if (item['total'] == null) {
+        double precio = (item['precio'] as num?)?.toDouble() ?? 0.0;
+        int cantidad = (item['cantidad'] as num?)?.toInt() ?? 0;
+        item['total'] = precio * cantidad;
+      }
+    }
+
+    double grandTotal = _saleDetails.fold(0.0, (sum, item) {
+      double total = (item['total'] as num?)?.toDouble() ?? 0.0;
+      return sum + total;
+    });
+
     String selectedCurrency = 'Pesos';
     double receivedAmount = 0.0;
 
@@ -554,6 +615,10 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                             });
 
                             try {
+                              // Crear una copia de los detalles de la venta antes de guardar
+                              final productosParaImprimir =
+                                  List<Map<String, dynamic>>.from(_saleDetails);
+
                               await _guardarVenta(); // Guardar la venta en Firestore
 
                               final productosParaActualizar =
@@ -567,6 +632,38 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
                                   print(
                                       'El ID del producto es nulo para el producto: ${product['nombre']}');
                                 }
+                              }
+
+                              // Imprimir ticket después de guardar la venta
+                              try {
+                                final user = FirebaseAuth.instance.currentUser;
+                                final cashierName = user?.email ?? 'Usuario';
+
+                                await PrintingService().printSaleTicket(
+                                  saleDetails: productosParaImprimir,
+                                  grandTotal: grandTotal,
+                                  receivedAmount: receivedAmount,
+                                  changeAmount: selectedCurrency == 'Pesos'
+                                      ? receivedAmount - grandTotal
+                                      : receivedAmount * conversionRate -
+                                          grandTotal,
+                                  currency: selectedCurrency,
+                                  businessName: 'MOON PV',
+                                  cashierName: cashierName,
+                                );
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content:
+                                          Text('Ticket impreso correctamente')),
+                                );
+                              } catch (printError) {
+                                print('Error al imprimir ticket: $printError');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Venta guardada pero error al imprimir: $printError')),
+                                );
                               }
 
                               Navigator.of(context).pop(); // Cerrar el diálogo
@@ -671,6 +768,17 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
             int.tryParse(_quantityController.text) ?? 1;
         final int availableQuantity =
             int.tryParse(product['cantidad']?.toString() ?? '0') ?? 0;
+
+        // Verificar que el producto tenga stock disponible
+        if (availableQuantity <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${product['nombre'] ?? 'Producto'} está agotado'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
 
         if (requestedQuantity <= availableQuantity) {
           setState(() {
@@ -823,17 +931,73 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
     }
   }
 
+  // Función para calcular el total en pesos
+  double get _totalInPesos {
+    return _saleDetails.fold(0.0, (sum, detail) {
+      final price = (detail['precio'] as num?)?.toDouble() ?? 0.0;
+      final quantity = (detail['cantidad'] as num?)?.toInt() ?? 0;
+      return sum + (price * quantity);
+    });
+  }
+
+  // Función para calcular el total en dólares
+  double get _totalInDollars {
+    return _totalInPesos / _exchangeRate;
+  }
+
+  // Función para obtener el número total de artículos
+  int get _totalItems {
+    return _saleDetails.fold(0, (sum, detail) {
+      return sum + ((detail['cantidad'] as num?)?.toInt() ?? 0);
+    });
+  }
+
+  Future<void> _loadExchangeRate() async {
+    try {
+      final doc =
+          await _firestore.collection('configuracion').doc('tipo_cambio').get();
+      if (doc.exists) {
+        setState(() {
+          _exchangeRate = (doc.data()?['valor'] as num?)?.toDouble() ?? 17.50;
+        });
+      }
+    } catch (e) {
+      print('Error al cargar tipo de cambio: $e');
+    }
+  }
+
+  Future<void> _testPrint() async {
+    try {
+      await PrintingService().printTestTicket();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Test de impresora enviado correctamente')),
+      );
+    } catch (e) {
+      print('Error en test de impresora: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error en test de impresora: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     int totalItems = _saleDetails.fold<int>(
-        0, (sum, item) => sum + (item['cantidad'] as int));
+        0, (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0));
 
     double totalDollars = _saleDetails.fold(
         0.0,
         (sum, item) =>
-            sum + (item['precio'] * item['cantidad'] / conversionRate));
-    double grandTotal =
-        _saleDetails.fold(0.0, (sum, item) => sum + item['total']);
+            sum +
+            ((item['price'] as num?)?.toDouble() ?? 0.0) *
+                ((item['quantity'] as num?)?.toInt() ?? 0) /
+                conversionRate);
+    double grandTotal = _saleDetails.fold(
+        0.0,
+        (sum, item) =>
+            sum +
+            ((item['price'] as num?)?.toDouble() ?? 0.0) *
+                ((item['quantity'] as num?)?.toInt() ?? 0));
 
     bool isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
@@ -849,6 +1013,29 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
             },
           );
         }),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.print),
+            onPressed: _testPrint,
+            tooltip: 'Test de impresora',
+          ),
+          IconButton(
+            icon: Icon(Icons.delete),
+            onPressed: () {
+              setState(() {
+                _saleDetails.clear();
+              });
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.business),
+            onPressed: () {
+              setState(() {
+                _showBusinessProducts = !_showBusinessProducts;
+              });
+            },
+          ),
+        ],
       ),
       drawer: Drawer(
         child: FutureBuilder<String?>(
@@ -1091,364 +1278,411 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
       ),
       body: Column(
         children: [
-          if (isPortrait) ...[
-            // Modo vertical
-            Container(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _quantityController,
-                    decoration: InputDecoration(
-                      labelText: 'Cantidad',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    onSubmitted: (value) {
-                      if (_codeController.text.isNotEmpty) {
-                        _searchProductByCode(_codeController.text);
-                      }
-                    },
-                  ),
-                  SizedBox(height: 16.0),
-                  TextField(
-                    controller: _codeController,
-                    focusNode: _codeFocusNode,
-                    decoration: InputDecoration(
-                      labelText: 'Código',
-                      border: OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                          icon: Icon(Icons.camera_alt),
-                          onPressed: () async {
-                            // Abre la cámara para escanear el código de barras y pasa el nombre de la pantalla actual
-                            print('Antes de Navigator.push (Punto de Venta)');
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      BarcodeScannerPointSalePage()),
-                            );
-
-                            if (result != null && result['barcode'] != null) {
-                              String scannedBarcode = result['barcode'];
-
-                              // Asigna el código escaneado al campo de texto
-                              _codeController.text = scannedBarcode;
-
-                              // Llama a la función para buscar el producto por el código
-                              _searchProductByCode(scannedBarcode);
-                            }
-                          }),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
-                    onSubmitted: (value) {
-                      if (_codeController.text.isNotEmpty) {
-                        _searchProductByCode(_codeController.text);
-                      }
-                    },
-                  ),
-                  SizedBox(height: 16.0),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Botones más pequeños
-                      ElevatedButton.icon(
-                        onPressed: _finalizarVenta,
-                        icon: Icon(Icons.check, size: 16, color: Colors.white),
-                        label: Text(
-                          'Finalizar',
-                          style: TextStyle(fontSize: 12, color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                              vertical: 13, horizontal: 13),
-                          backgroundColor: Colors.greenAccent[700],
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () {},
-                        icon: Icon(Icons.print_rounded,
-                            size: 16, color: Colors.white),
-                        label: Text(
-                          'Ticket',
-                          style: TextStyle(fontSize: 12, color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                              vertical: 13, horizontal: 13),
-                          backgroundColor: Colors.blueAccent[200],
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: _cancelSale,
-                        icon: Icon(Icons.close, size: 16, color: Colors.white),
-                        label: Text(
-                          'Cancelar',
-                          style: TextStyle(fontSize: 12, color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                              vertical: 13, horizontal: 13),
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          if (_showBusinessProducts)
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    DataTable(
-                      columnSpacing: 12.0, // Menor separación entre columnas
-                      columns: const <DataColumn>[
-                        DataColumn(label: Text('Cantidad')),
-                        DataColumn(label: Text('Nombre')),
-                        DataColumn(label: Text('Código')),
-                        DataColumn(label: Text('Precio')),
-                        DataColumn(label: Text('Total')),
-                      ],
-                      rows: _saleDetails
-                          .map(
-                            (product) => DataRow(
-                              selected: _selectedProduct == product,
-                              onSelectChanged: (selected) {
-                                setState(() {
-                                  _selectedProduct = selected! ? product : null;
-                                });
-                              },
-                              cells: <DataCell>[
-                                DataCell(Text(product['cantidad'].toString())),
-                                DataCell(Text(product['nombre'])),
-                                DataCell(Text(product['codigo'])),
-                                DataCell(Text('\$${product['precio']}')),
-                                DataCell(Text('\$${product['total']}')),
-                              ],
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ],
-                ),
+              child: BusinessProductsAccordion(
+                onProductSelected: (product) {
+                  setState(() {
+                    _showBusinessProducts = false;
+                    _addProductToSale(product);
+                  });
+                },
               ),
-            ),
-
-            // Textos y botón "Eliminar Producto" alineados hasta abajo
-            Container(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end, // Alinea hasta abajo
-                children: [
-                  // Textos en horizontal
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildTotalContainer(
-                        title: 'Artículos',
-                        value: totalItems.toString(),
-                        color: Colors.blue.shade100,
-                      ),
-                      _buildTotalContainer(
-                        title: 'Total Dlls \$',
-                        value: '\$${totalDollars.toStringAsFixed(2)}',
-                        color: Colors.green.shade100,
-                      ),
-                      _buildTotalContainer(
-                        title: 'Gran Total',
-                        value: '\$${grandTotal.toStringAsFixed(2)}',
-                        color: Colors.red.shade100,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 16.0),
-                  // Botón "Eliminar Producto"
-                  ElevatedButton(
-                    onPressed: _deleteSelectedProduct,
-                    child: Text(
-                      'Eliminar Producto',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      minimumSize: Size(double.infinity, 50), // Ancho completo
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            // Modo horizontal
-            Container(
-              padding: EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _quantityController,
-                      decoration: InputDecoration(
-                        labelText: 'Cantidad',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: <TextInputFormatter>[
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      onSubmitted: (value) {
-                        if (_codeController.text.isNotEmpty) {
-                          _searchProductByCode(_codeController.text);
-                        }
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 16.0),
-                  Expanded(
-                    child: TextField(
-                      controller: _codeController,
-                      focusNode: _codeFocusNode,
-                      decoration: InputDecoration(
-                        labelText: 'Código',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: <TextInputFormatter>[
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      onSubmitted: (value) {
-                        if (_codeController.text.isNotEmpty) {
-                          _searchProductByCode(_codeController.text);
-                        }
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 5.0),
-                  Column(
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: _finalizarVenta,
-                        icon: Icon(Icons.check, color: Colors.white),
-                        label: Text(
-                          'Finalizar Venta',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.greenAccent[700],
-                        ),
-                      ),
-                      SizedBox(height: 5.0),
-                      ElevatedButton.icon(
-                        onPressed: () {},
-                        icon: Icon(Icons.print_rounded, color: Colors.white),
-                        label: Text(
-                          'Ultimo Ticket',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent[200],
-                        ),
-                      ),
-                      SizedBox(height: 5.0),
-                      ElevatedButton.icon(
-                        onPressed: _cancelSale,
-                        icon: Icon(Icons.close, color: Colors.white),
-                        label: Text(
-                          'Cancelar Venta',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            )
+          else
             Expanded(
-              child: SingleChildScrollView(
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: DataTable(
-                        columnSpacing: 24.0, // Separación normal entre columnas
-                        columns: const <DataColumn>[
-                          DataColumn(label: Text('Cantidad')),
-                          DataColumn(label: Text('Nombre')),
-                          DataColumn(label: Text('Código')),
-                          DataColumn(label: Text('Precio')),
-                          DataColumn(label: Text('Total')),
-                        ],
-                        rows: _saleDetails
-                            .map(
-                              (product) => DataRow(
-                                selected: _selectedProduct == product,
-                                onSelectChanged: (selected) {
-                                  setState(() {
-                                    _selectedProduct =
-                                        selected! ? product : null;
-                                  });
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isPortrait =
+                      constraints.maxHeight > constraints.maxWidth;
+
+                  if (isPortrait) {
+                    // Vertical Layout
+                    return Column(
+                      children: [
+                        // Input fields and main buttons (top part)
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 16.0, vertical: 8.0),
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _quantityController,
+                                decoration: InputDecoration(
+                                  labelText: 'Cantidad',
+                                  border: OutlineInputBorder(),
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: <TextInputFormatter>[
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                onSubmitted: (value) {
+                                  if (_codeController.text.isNotEmpty) {
+                                    _searchProductByCode(_codeController.text);
+                                  }
                                 },
-                                cells: <DataCell>[
-                                  DataCell(
-                                      Text(product['cantidad'].toString())),
-                                  DataCell(Text(product['nombre'])),
-                                  DataCell(Text(product['codigo'])),
-                                  DataCell(Text('\$${product['precio']}')),
-                                  DataCell(Text('\$${product['total']}')),
+                              ),
+                              SizedBox(height: 8.0),
+                              TextField(
+                                controller: _codeController,
+                                focusNode: _codeFocusNode,
+                                decoration: InputDecoration(
+                                  labelText: 'Código',
+                                  border: OutlineInputBorder(),
+                                  suffixIcon: IconButton(
+                                    icon: Icon(Icons.camera_alt),
+                                    onPressed: () async {
+                                      print(
+                                          'Antes de Navigator.push (Punto de Venta)');
+                                      final result = await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              BarcodeScannerPointSalePage(),
+                                        ),
+                                      );
+                                      if (result != null &&
+                                          result['barcode'] != null) {
+                                        String scannedBarcode =
+                                            result['barcode'];
+                                        _codeController.text = scannedBarcode;
+                                        _searchProductByCode(scannedBarcode);
+                                      }
+                                    },
+                                  ),
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: <TextInputFormatter>[
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                onSubmitted: (value) {
+                                  if (_codeController.text.isNotEmpty) {
+                                    _searchProductByCode(_codeController.text);
+                                  }
+                                },
+                              ),
+                              SizedBox(height: 8.0),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _finalizarVenta,
+                                    icon: Icon(Icons.check,
+                                        size: 16, color: Colors.white),
+                                    label: Text(
+                                      'Finalizar',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: EdgeInsets.symmetric(
+                                          vertical: 13, horizontal: 13),
+                                      backgroundColor: Colors.greenAccent[700],
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: () {
+                                      // TODO: Implement print ticket functionality
+                                    },
+                                    icon: Icon(Icons.print_rounded,
+                                        size: 16, color: Colors.white),
+                                    label: Text(
+                                      'Ticket',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: EdgeInsets.symmetric(
+                                          vertical: 13, horizontal: 13),
+                                      backgroundColor: Colors.blueAccent[200],
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: _cancelSale,
+                                    icon: Icon(Icons.close,
+                                        size: 16, color: Colors.white),
+                                    label: Text(
+                                      'Cancelar',
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: EdgeInsets.symmetric(
+                                          vertical: 13, horizontal: 13),
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  ),
                                 ],
                               ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 1,
-                      child: Column(
-                        children: [
-                          _buildTotalContainer(
-                            title: 'Artículos',
-                            value: totalItems.toString(),
-                            color: Colors.blue.shade100,
+                            ],
                           ),
-                          SizedBox(height: 12.0),
-                          _buildTotalContainer(
-                            title: 'Total \$',
-                            value: '\$${totalDollars.toStringAsFixed(2)}',
-                            color: Colors.green.shade100,
+                        ),
+                        // Sales Table (takes remaining space)
+                        Expanded(
+                          child: LayoutBuilder(
+                            // Use LayoutBuilder here to get available height
+                            builder: (context, boxConstraints) {
+                              return SingleChildScrollView(
+                                // Vertical scroll for the table
+                                scrollDirection: Axis.vertical,
+                                child: SingleChildScrollView(
+                                  // Horizontal scroll for the table
+                                  scrollDirection: Axis.horizontal,
+                                  // Constrain the DataTable's height to prevent it from taking unbounded height
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        minHeight: boxConstraints.maxHeight),
+                                    child:
+                                        _buildSalesTable(), // This returns DataTable
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                          SizedBox(height: 12.0),
-                          _buildTotalContainer(
-                            title: 'Gran Total',
-                            value: '\$${grandTotal.toStringAsFixed(2)}',
-                            color: Colors.red.shade100,
+                        ),
+                        Spacer(), // Pushes totals to bottom
+                        // Totals and Delete Product button (at the bottom)
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildTotalContainer(
+                                title: 'Artículos',
+                                value: '$_totalItems',
+                                color: Colors.blue.shade100,
+                              ),
+                              SizedBox(width: 12.0),
+                              _buildTotalContainer(
+                                title: 'Total ' + String.fromCharCode(0x0024),
+                                value:
+                                    '${String.fromCharCode(0x0024)}${_totalInDollars.toStringAsFixed(2)}',
+                                color: Colors.green.shade100,
+                              ),
+                              SizedBox(width: 12.0),
+                              _buildTotalContainer(
+                                title: 'Gran Total',
+                                value:
+                                    '${String.fromCharCode(0x0024)}${_totalInPesos.toStringAsFixed(2)}',
+                                color: Colors.red.shade100,
+                              ),
+                            ],
                           ),
-                          SizedBox(height: 16.0),
-                          ElevatedButton(
-                            onPressed: _deleteSelectedProduct,
-                            child: Text(
-                              'Eliminar Producto',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.redAccent,
-                            ),
+                        ),
+                        SizedBox(height: 16.0),
+                        ElevatedButton(
+                          onPressed: _deleteSelectedProduct,
+                          child: Text(
+                            'Eliminar Producto',
+                            style: TextStyle(color: Colors.white),
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    );
+                  } else {
+                    // Horizontal Layout
+                    return Row(
+                      // Main row for horizontal layout
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start, // Align content to the top
+                      children: [
+                        // Input fields and main buttons (left part) - Fixed width
+                        Container(
+                          width: 250.0, // Fixed width
+                          padding: EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              SizedBox(
+                                // Ensure TextField has bounded width
+                                width: 200.0,
+                                child: TextField(
+                                  controller: _quantityController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Cantidad',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: <TextInputFormatter>[
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  onSubmitted: (value) {
+                                    if (_codeController.text.isNotEmpty) {
+                                      _searchProductByCode(
+                                          _codeController.text);
+                                    }
+                                  },
+                                ),
+                              ),
+                              SizedBox(height: 16.0),
+                              SizedBox(
+                                // Ensure TextField has bounded width
+                                width: 200.0,
+                                child: TextField(
+                                  controller: _codeController,
+                                  focusNode: _codeFocusNode,
+                                  decoration: InputDecoration(
+                                    labelText: 'Código',
+                                    border: OutlineInputBorder(),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(Icons.camera_alt),
+                                      onPressed: () async {
+                                        final result = await Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                BarcodeScannerPointSalePage(),
+                                          ),
+                                        );
+                                        if (result != null &&
+                                            result['barcode'] != null) {
+                                          String scannedBarcode =
+                                              result['barcode'];
+                                          _codeController.text = scannedBarcode;
+                                          _searchProductByCode(scannedBarcode);
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: <TextInputFormatter>[
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  onSubmitted: (value) {
+                                    if (_codeController.text.isNotEmpty) {
+                                      _searchProductByCode(
+                                          _codeController.text);
+                                    }
+                                  },
+                                ),
+                              ),
+                              SizedBox(height: 5.0),
+                              Column(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: _finalizarVenta,
+                                    icon:
+                                        Icon(Icons.check, color: Colors.white),
+                                    label: Text(
+                                      'Finalizar Venta',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.greenAccent[700],
+                                    ),
+                                  ),
+                                  SizedBox(height: 5.0),
+                                  ElevatedButton.icon(
+                                    onPressed: () {
+                                      // TODO: Implement print last ticket functionality
+                                    },
+                                    icon: Icon(Icons.print_rounded,
+                                        color: Colors.white),
+                                    label: Text(
+                                      'Ultimo Ticket',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blueAccent[200],
+                                    ),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: _cancelSale,
+                                    icon:
+                                        Icon(Icons.close, color: Colors.white),
+                                    label: Text(
+                                      'Cancelar Venta',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.redAccent,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16), // Spacing
+                        // Sales Table and Totals (right side) - Expanded to fill remaining space
+                        Expanded(
+                          child: Row(
+                            // Row for table and totals
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start, // Align top
+                            children: [
+                              // Table with its own scrolling - Flexible to take available space
+                              Flexible(
+                                fit: FlexFit.loose,
+                                child: SingleChildScrollView(
+                                  // Vertical scroll for the table
+                                  scrollDirection: Axis.vertical,
+                                  child: SingleChildScrollView(
+                                    // Horizontal scroll for the table
+                                    scrollDirection: Axis.horizontal,
+                                    child: _buildSalesTable(),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                  width:
+                                      16), // Spacing between table and totals
+                              // Totals and Delete Button - Fixed width
+                              SizedBox(
+                                width:
+                                    180.0, // Fixed width for the totals column
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment
+                                      .start, // Align content to the start (top)
+                                  children: [
+                                    _buildTotalContainer(
+                                      title: 'Artículos',
+                                      value: '$_totalItems',
+                                      color: Colors.blue.shade100,
+                                    ),
+                                    SizedBox(height: 12.0),
+                                    _buildTotalContainer(
+                                      title: 'Total ' +
+                                          String.fromCharCode(0x0024),
+                                      value:
+                                          '${String.fromCharCode(0x0024)}${_totalInDollars.toStringAsFixed(2)}',
+                                      color: Colors.green.shade100,
+                                    ),
+                                    SizedBox(height: 12.0),
+                                    _buildTotalContainer(
+                                      title: 'Gran Total',
+                                      value:
+                                          '${String.fromCharCode(0x0024)}${_totalInPesos.toStringAsFixed(2)}',
+                                      color: Colors.red.shade100,
+                                    ),
+                                    SizedBox(height: 16.0),
+                                    ElevatedButton(
+                                      onPressed: _deleteSelectedProduct,
+                                      child: Text(
+                                        'Eliminar Producto',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                },
               ),
             ),
-          ],
         ],
       ),
     );
@@ -1479,6 +1713,152 @@ class _SalespointNewSalePageState extends State<SalespointNewSalePage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSalesTable() {
+    return DataTable(
+      columnSpacing: 8,
+      horizontalMargin: 8,
+      columns: [
+        // Removed const here to allow flexible titles
+        DataColumn(
+          label: SizedBox(
+            width: 110,
+            child: Text('Cantidad', textAlign: TextAlign.center),
+          ),
+        ),
+        DataColumn(
+          label: SizedBox(
+            width: 120,
+            child: Text('Código', textAlign: TextAlign.center),
+          ),
+        ),
+        DataColumn(
+          label: SizedBox(
+            width: 200,
+            child: Text('Nombre', textAlign: TextAlign.center),
+          ),
+        ),
+        DataColumn(
+          label: SizedBox(
+            width: 100,
+            child: Text('Precio Unit.', textAlign: TextAlign.center),
+          ),
+        ),
+        DataColumn(
+          label: SizedBox(
+            width: 100,
+            child: Text('Total', textAlign: TextAlign.center),
+          ),
+        ),
+        DataColumn(
+          label: SizedBox(
+            width: 50,
+            child: Text('', textAlign: TextAlign.center),
+          ),
+        ),
+      ],
+      rows: _saleDetails.map((detail) {
+        final price = (detail['precio'] as num?)?.toDouble() ?? 0.0;
+        final quantity = (detail['cantidad'] as num?)?.toInt() ?? 0;
+        final total = price * quantity;
+        return DataRow(
+          cells: [
+            DataCell(
+              SizedBox(
+                width: 110,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.remove, size: 14),
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints(
+                        minWidth: 28,
+                        minHeight: 28,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          if (quantity > 1) {
+                            detail['cantidad'] = quantity - 1;
+                          }
+                        });
+                      },
+                    ),
+                    Text('$quantity', textAlign: TextAlign.center),
+                    IconButton(
+                      icon: Icon(Icons.add, size: 14),
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints(
+                        minWidth: 28,
+                        minHeight: 28,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          detail['cantidad'] = quantity + 1;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            DataCell(
+              SizedBox(
+                width: 120,
+                child: Text(
+                  detail['codigo'] ?? '',
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            DataCell(
+              SizedBox(
+                width: 200,
+                child: Text(
+                  detail['nombre'] ?? '',
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            DataCell(
+              SizedBox(
+                width: 100,
+                child: Text(
+                  String.fromCharCode(0x0024) + price.toStringAsFixed(2),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            DataCell(
+              SizedBox(
+                width: 100,
+                child: Text(
+                  String.fromCharCode(0x0024) + total.toStringAsFixed(2),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            DataCell(
+              SizedBox(
+                width: 50,
+                child: IconButton(
+                  icon: Icon(Icons.delete, color: Colors.red),
+                  onPressed: () {
+                    setState(() {
+                      _saleDetails.remove(detail);
+                    });
+                  },
+                ),
+              ),
+            ),
+          ],
+        );
+      }).toList(),
     );
   }
 }

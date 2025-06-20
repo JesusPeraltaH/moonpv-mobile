@@ -50,8 +50,8 @@
 //     return GetMaterialApp(
 //       title: 'MoonConcept Store',
 //       debugShowCheckedModeBanner: false,
-//       theme: ZaraTheme.lightTheme,
-//       darkTheme: ZaraTheme.darkTheme,
+//       theme: MoonTheme.lightTheme,
+//       darkTheme: MoonTheme.darkTheme,
 //       home: IntermidScreen(), // Widget que maneja el splash
 //     );
 //   }
@@ -65,7 +65,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:moonpv/inventory/inventory_page.dart';
 import 'package:moonpv/point_sale/point_sale_newpage.dart';
 import 'package:moonpv/screens/IntermidScreen.dart';
-import 'package:moonpv/theme/zara_theme.dart';
+import 'package:moonpv/theme/moon_theme.dart';
 import 'firebase_options.dart';
 import 'package:moonpv/controllers/cart_controller.dart'; // Import CartController
 
@@ -167,8 +167,8 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       title: 'MoonConcept Store',
       debugShowCheckedModeBanner: false,
-      theme: ZaraTheme.lightTheme,
-      darkTheme: ZaraTheme.darkTheme,
+      theme: MoonTheme.lightTheme,
+      darkTheme: MoonTheme.darkTheme,
       home: IntermidScreen(), // Widget que maneja el splash
       navigatorObservers: [routeObserver], // Aquí implementamos el observer
       initialBinding: AppBindings(), // <-- Add the global binding here
